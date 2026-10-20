@@ -1,0 +1,16 @@
+# A tiling window manager's thin outline and workspace name.
+name = "Tiled"
+colour = "#ffffff"
+ink = "#6fa8dc"
+font = "mono"
+radius = 0
+outline = "#8dbbe6"
+
+[[rows]]
+height = 22
+items = [
+    { type = "space", width = 8 },
+    { type = "title", default = "1:main", placeholder = false },
+    { type = "menu", style = "hamburger" },
+    { type = "space", width = 2 },
+]

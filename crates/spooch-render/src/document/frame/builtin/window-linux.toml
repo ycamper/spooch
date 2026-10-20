@@ -1,0 +1,15 @@
+# A dark header bar: a menu, a centred title and window buttons.
+name = "Window (Linux)"
+colour = "#2e2e2e"
+ink = "#ececec"
+radius = 8
+border = 3
+
+[[rows]]
+height = 32
+items = [
+    { type = "space", width = 6 },
+    { type = "menu", style = "hamburger" },
+    { type = "title", default = "Untitled", align = "center", placeholder = false },
+    { type = "buttons", size = 0.9 },
+]

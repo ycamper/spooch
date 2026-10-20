@@ -1,0 +1,16 @@
+# Drawn like text: a dashed box with + corners.
+name = "Terminal (ASCII)"
+colour = "#ffffff"
+ink = "#b4b4b4"
+font = "mono"
+radius = 0
+border = 4
+outline = "#c4c4c4"
+outline-style = "ascii"
+
+[[rows]]
+height = 26
+items = [
+    { type = "space", width = 10 },
+    { type = "title", default = "user@host:~", placeholder = false },
+]

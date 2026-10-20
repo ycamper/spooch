@@ -1,0 +1,31 @@
+# A light browser: a tab, then back, forward, reload and the address.
+name = "Browser (light)"
+colour = "#dfe1e5"
+ink = "#45474a"
+radius = 10
+border = 3
+
+[[rows]]
+height = 34
+items = [
+    { type = "space", width = 4 },
+    { type = "dots", colours = ["#ff5f57", "#febc2e", "#28c840"] },
+    { type = "space", width = 6 },
+    { type = "tab", fraction = 0.46, min-width = 120, close = true },
+    { type = "plus" },
+]
+
+[[rows]]
+height = 36
+background = "field"
+items = [
+    { type = "space", width = 6 },
+    { type = "back" },
+    { type = "forward" },
+    { type = "reload" },
+    { type = "space", width = 6 },
+    { type = "address", height = 26, lock = true, fill = "well" },
+    { type = "space", width = 4 },
+    { type = "menu" },
+    { type = "space", width = 6 },
+]

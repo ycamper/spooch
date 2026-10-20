@@ -1,0 +1,10 @@
+[package]
+name = "spooch-platform"
+description = "Settings, Recents, saving, the log and the shared app flow, for every shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+png = "0.18"

@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+spooch-app = { path = "crates/spooch-app" }
+spooch-platform = { path = "crates/spooch-platform" }
+spooch-render = { path = "crates/spooch-render" }
+spooch-share = { path = "crates/spooch-share" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

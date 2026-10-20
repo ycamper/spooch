@@ -1,0 +1,16 @@
+# Quiet: hollow circles and a + for a new tab.
+name = "Window (minimal)"
+colour = "#e8e8e8"
+ink = "#7a7a7a"
+radius = 8
+border = 3
+
+[[rows]]
+height = 26
+items = [
+    { type = "space", width = 6 },
+    { type = "circles", count = 3 },
+    { type = "title", placeholder = false },
+    { type = "plus" },
+    { type = "space", width = 4 },
+]

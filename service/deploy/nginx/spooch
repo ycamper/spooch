@@ -1,0 +1,135 @@
+# /etc/nginx/sites-available/spooch, linked from sites-enabled.
+#
+# api.spooch.app is the app's API (/v1/...); img.spooch.app serves share
+# links. Both go to spoochd on 127.0.0.1:8081. spooch.app is the website,
+# static files in /var/www/spooch-site (site.sh puts them there), and www
+# sends people to it. HTTPS from Let's Encrypt
+# (certbot --webroot, certificate "spooch.app", renewed by certbot's
+# timer; the deploy hook reloads nginx). Cloudflare proxies both in Full
+# (strict).
+
+# Links carry their secret in the path: the log keeps only the id.
+map $uri $spooch_path {
+    "~^/([0-9A-Za-z]{10})[0-9A-Za-z]{22}(\.[a-z]+)?$"  /$1~$2;
+    default                                          $uri;
+}
+log_format spooch '$remote_addr [$time_local] "$request_method $spooch_path" '
+                  '$status $body_bytes_sent "$http_user_agent"';
+
+# Per visitor, by the real address (see cloudflare-realip).
+limit_req_zone $binary_remote_addr zone=spooch:10m rate=20r/s;
+
+server {
+    server_tokens off;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.spooch.app;
+    access_log /var/log/nginx/spooch.log spooch;
+    include snippets/cloudflare-realip.conf;
+
+    ssl_certificate     /etc/letsencrypt/live/spooch.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/spooch.app/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Uploads go straight to the bucket, so requests here are small.
+    client_max_body_size 64k;
+    limit_req zone=spooch burst=40 nodelay;
+
+    location /v1/ {
+        include snippets/spooch-proxy.conf;
+    }
+    # A link made on this host opens where links live.
+    location / {
+        return 301 https://img.spooch.app$request_uri;
+    }
+}
+
+server {
+    server_tokens off;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name img.spooch.app;
+    access_log /var/log/nginx/spooch.log spooch;
+    # Error lines quote the request, secret and all; keep only the worst.
+    error_log /var/log/nginx/error.log crit;
+    include snippets/cloudflare-realip.conf;
+
+    ssl_certificate     /etc/letsencrypt/live/spooch.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/spooch.app/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    client_max_body_size 1k;
+    limit_req zone=spooch burst=40 nodelay;
+
+    location /v1/ {
+        return 404;
+    }
+    location / {
+        limit_except GET {
+            deny all;
+        }
+        include snippets/spooch-proxy.conf;
+    }
+}
+
+server {
+    server_tokens off;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name spooch.app;
+    access_log /var/log/nginx/spooch.log spooch;
+    include snippets/cloudflare-realip.conf;
+
+    ssl_certificate     /etc/letsencrypt/live/spooch.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/spooch.app/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # The page's own files, its inline style and script, and Google Fonts.
+    add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+
+    root /var/www/spooch-site;
+    index index.html;
+    # The animations fetch a lot of frames at once.
+    limit_req zone=spooch burst=400 nodelay;
+
+    location / {
+        limit_except GET {
+            deny all;
+        }
+        try_files $uri $uri/ =404;
+    }
+    location /shots/ {
+        expires 1h;
+    }
+    # Release downloads, put there by dl.sh; apart from the site, so
+    # site.sh never removes them.
+    location /dl/ {
+        alias /var/www/spooch-dl/;
+        default_type application/octet-stream;
+    }
+}
+
+server {
+    server_tokens off;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name www.spooch.app;
+    ssl_certificate     /etc/letsencrypt/live/spooch.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/spooch.app/privkey.pem;
+    return 301 https://spooch.app$request_uri;
+}
+
+# Port 80: certificate validation, otherwise to HTTPS.
+server {
+    server_tokens off;
+    listen 80;
+    listen [::]:80;
+    server_name api.spooch.app img.spooch.app spooch.app www.spooch.app;
+    access_log /var/log/nginx/spooch.log spooch;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://$host$request_uri; }
+}

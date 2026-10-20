@@ -1,0 +1,29 @@
+# A dark browser with a menu of lines instead of dots.
+name = "Browser (compact)"
+colour = "#1c1b22"
+ink = "#fbfbfe"
+radius = 8
+border = 3
+
+[[rows]]
+height = 34
+items = [
+    { type = "space", width = 8 },
+    { type = "tab", fraction = 0.42, min-width = 120, close = true },
+    { type = "plus" },
+]
+
+[[rows]]
+height = 38
+background = "field"
+items = [
+    { type = "space", width = 6 },
+    { type = "back" },
+    { type = "forward" },
+    { type = "reload" },
+    { type = "space", width = 8 },
+    { type = "address", height = 28, lock = true, fill = "well" },
+    { type = "space", width = 6 },
+    { type = "menu", style = "hamburger" },
+    { type = "space", width = 6 },
+]

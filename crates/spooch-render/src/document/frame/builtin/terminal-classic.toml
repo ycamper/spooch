@@ -1,0 +1,15 @@
+# A dark terminal: its prompt as the title, window buttons on the right.
+name = "Terminal (classic)"
+colour = "#2b2b2b"
+ink = "#e6e6e6"
+font = "mono"
+radius = 3
+border = 3
+
+[[rows]]
+height = 26
+items = [
+    { type = "space", width = 10 },
+    { type = "title", default = "user@host:~", placeholder = false },
+    { type = "buttons", size = 0.8 },
+]

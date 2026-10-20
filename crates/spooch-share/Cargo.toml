@@ -1,0 +1,15 @@
+[package]
+name = "spooch-share"
+description = "Sharing to Spooch's service: links, uploads and the signed-in device token. The only code that sends pixels off the machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+getrandom = "0.2"
+keyring = { version = "3", features = ["windows-native", "async-secret-service", "async-io", "crypto-rust"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ureq = { version = "2", features = ["json"] }

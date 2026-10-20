@@ -1,0 +1,3 @@
+# Soft corners and a shadow, nothing else.
+name = "Rounded"
+radius = 12

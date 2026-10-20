@@ -1,0 +1,16 @@
+# Rounded and dark, with coloured window dots.
+name = "Terminal (modern)"
+colour = "#2a2d34"
+ink = "#e8e8e8"
+font = "mono"
+radius = 10
+border = 3
+
+[[rows]]
+height = 32
+items = [
+    { type = "space", width = 6 },
+    { type = "dots", colours = ["#ff5f57", "#febc2e", "#28c840"] },
+    { type = "space", width = 14 },
+    { type = "title", default = "user@host:~", placeholder = false },
+]

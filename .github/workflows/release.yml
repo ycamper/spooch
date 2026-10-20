@@ -1,0 +1,80 @@
+name: Release
+
+# A tag like v0.0.1 builds Windows and Linux and attaches them, with their
+# checksums, to a GitHub release of that name.
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p spooch-shell-win
+      # The Visual C++ runtime goes beside the exe (Microsoft allows this),
+      # so it runs on a fresh Windows with nothing to install.
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "spooch-$($env:GITHUB_REF_NAME.TrimStart('v'))-windows-x64"
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT" | Sort-Object FullName | Select-Object -Last 1
+          New-Item -ItemType Directory "$name\licenses" | Out-Null
+          Copy-Item target\release\spooch.exe, "$crt\msvcp140.dll", "$crt\vcruntime140.dll" $name
+          Copy-Item crates\spooch-render\fonts\OFL-*.txt "$name\licenses"
+          Copy-Item crates\spooch-render\stickers\LICENSE-*.txt "$name\licenses"
+          Copy-Item LICENSE-MIT, LICENSE-APACHE "$name\licenses"
+          Copy-Item packaging\README.txt $name
+          Compress-Archive $name "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: spooch-*-windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    # An older Ubuntu, so the binary runs on older glibc too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libfreetype-dev libfontconfig-dev
+      - run: cargo build --release -p spooch-shell-x11
+      - name: Package
+        run: |
+          name="spooch-${GITHUB_REF_NAME#v}-linux-x86_64"
+          mkdir -p "$name/licenses"
+          cp target/release/spooch-x11 "$name/"
+          cp crates/spooch-render/fonts/OFL-*.txt "$name/licenses/"
+          cp crates/spooch-render/stickers/LICENSE-*.txt "$name/licenses/"
+          cp LICENSE-MIT LICENSE-APACHE "$name/licenses/"
+          cp packaging/README.txt "$name/"
+          tar czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: spooch-*-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - run: sha256sum spooch-* > SHA256SUMS
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" spooch-* SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "Spooch $GITHUB_REF_NAME" \
+            --notes "Windows 10/11 (x64) and Linux on X11 (x86_64). Unsigned: Windows SmartScreen will ask before the first run. Checksums in SHA256SUMS."

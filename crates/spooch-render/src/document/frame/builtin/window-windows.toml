@@ -1,0 +1,14 @@
+# A light window: its title on the left, big window buttons on the right.
+name = "Window (Windows)"
+colour = "#e6e6e6"
+ink = "#202020"
+radius = 4
+border = 3
+
+[[rows]]
+height = 32
+items = [
+    { type = "space", width = 12 },
+    { type = "title", default = "Untitled", placeholder = false },
+    { type = "buttons", size = 1.15 },
+]

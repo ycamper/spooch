@@ -1,0 +1,16 @@
+# A blue title bar with white text.
+name = "Retro (DOS)"
+colour = "#0000aa"
+ink = "#ffffff"
+font = "mono"
+radius = 0
+border = 3
+outline = "none"
+
+[[rows]]
+height = 24
+items = [
+    { type = "space", width = 8 },
+    { type = "title", default = "C:\\>", placeholder = false },
+    { type = "buttons", size = 0.85 },
+]

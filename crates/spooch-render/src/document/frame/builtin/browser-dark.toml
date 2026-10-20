@@ -1,0 +1,29 @@
+# The same browser, dark.
+name = "Browser (dark)"
+colour = "#202124"
+ink = "#e3e3e3"
+radius = 10
+border = 3
+
+[[rows]]
+height = 34
+items = [
+    { type = "space", width = 8 },
+    { type = "tab", fraction = 0.46, min-width = 120, close = true },
+    { type = "plus" },
+]
+
+[[rows]]
+height = 36
+background = "field"
+items = [
+    { type = "space", width = 6 },
+    { type = "back" },
+    { type = "forward" },
+    { type = "reload" },
+    { type = "space", width = 6 },
+    { type = "address", height = 26, lock = true, fill = "well" },
+    { type = "space", width = 4 },
+    { type = "menu" },
+    { type = "space", width = 6 },
+]

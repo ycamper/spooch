@@ -1,0 +1,15 @@
+# A command prompt: C:\> and window buttons.
+name = "Terminal (Windows)"
+colour = "#262626"
+ink = "#f0f0f0"
+font = "mono"
+radius = 4
+border = 3
+
+[[rows]]
+height = 30
+items = [
+    { type = "space", width = 12 },
+    { type = "title", default = "C:\\>", placeholder = false },
+    { type = "buttons", size = 1.1 },
+]

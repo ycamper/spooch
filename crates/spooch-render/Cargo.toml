@@ -1,0 +1,13 @@
+[package]
+name = "spooch-render"
+description = "Annotation rendering on Skia: arrows, blur, and the shared editor canvas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+skia-safe = "0.153"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1.1.6"
