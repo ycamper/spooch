@@ -5,8 +5,9 @@
 # static files in /var/www/spooch-site (site.sh puts them there), and www
 # sends people to it. HTTPS from Let's Encrypt
 # (certbot --webroot, certificate "spooch.app", renewed by certbot's
-# timer; the deploy hook reloads nginx). Cloudflare proxies both in Full
-# (strict).
+# timer; the deploy hook reloads nginx). Cloudflare proxies them all in
+# Full (strict), and the HTTPS sites answer nobody else. Port 80 stays
+# open to all: it only redirects and answers certificate renewals.
 
 # Links carry their secret in the path: the log keeps only the id.
 map $uri $spooch_path {
@@ -19,11 +20,23 @@ log_format spooch '$remote_addr [$time_local] "$request_method $spooch_path" '
 # Per visitor, by the real address (see cloudflare-realip).
 limit_req_zone $binary_remote_addr zone=spooch:10m rate=20r/s;
 
+# Whether the connection itself comes from Cloudflare. $realip_remote_addr
+# is the address before cloudflare-realip swaps in the visitor's, which
+# `allow`/`deny` would see instead. cloudflare.sh writes the ranges.
+geo $realip_remote_addr $spooch_via_cloudflare {
+    default 0;
+    include snippets/cloudflare-geo.conf;
+}
+
 server {
     server_tokens off;
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name api.spooch.app;
+    # Only through Cloudflare: a request sent straight here is dropped.
+    if ($spooch_via_cloudflare = 0) {
+        return 444;
+    }
     access_log /var/log/nginx/spooch.log spooch;
     include snippets/cloudflare-realip.conf;
 
@@ -50,6 +63,10 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name img.spooch.app;
+    # Only through Cloudflare: a request sent straight here is dropped.
+    if ($spooch_via_cloudflare = 0) {
+        return 444;
+    }
     access_log /var/log/nginx/spooch.log spooch;
     # Error lines quote the request, secret and all; keep only the worst.
     error_log /var/log/nginx/error.log crit;
@@ -79,6 +96,10 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name spooch.app;
+    # Only through Cloudflare: a request sent straight here is dropped.
+    if ($spooch_via_cloudflare = 0) {
+        return 444;
+    }
     access_log /var/log/nginx/spooch.log spooch;
     include snippets/cloudflare-realip.conf;
 
@@ -118,6 +139,10 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name www.spooch.app;
+    # Only through Cloudflare: a request sent straight here is dropped.
+    if ($spooch_via_cloudflare = 0) {
+        return 444;
+    }
     ssl_certificate     /etc/letsencrypt/live/spooch.app/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/spooch.app/privkey.pem;
     return 301 https://spooch.app$request_uri;
