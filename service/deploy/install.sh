@@ -62,6 +62,8 @@ CONF
 fi
 
 echo "== nginx"
+# The Cloudflare snippets first: the site includes them.
+bash "$here/cloudflare.sh"
 install -m 0644 "$here/nginx/spooch-proxy.conf" /etc/nginx/snippets/
 install -m 0644 "$here/nginx/spooch" /etc/nginx/sites-available/spooch
 ln -sfn /etc/nginx/sites-available/spooch /etc/nginx/sites-enabled/spooch
