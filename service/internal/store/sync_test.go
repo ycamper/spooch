@@ -167,4 +167,30 @@ func syncContract(t *testing.T, s Store) {
 	if c, _ := s.Capture(ctx, sam.ID, "new-trash"); c.Gone {
 		t.Fatal("a fresh trashing was purged")
 	}
+
+	// Live and pending shares count toward the quota; deleted ones don't,
+	// but still count toward the day's shares.
+	base, err := s.Usage(ctx, sam.ID)
+	must(err)
+	share := Share{ID: "samshare01", Owner: sam.ID, SecretHash: "h", Size: 7, Type: "image/png",
+		Created: t0, State: Pending, Public: true}
+	must(s.CreateShare(ctx, share, nil))
+	for _, state := range []State{Pending, Live} {
+		if state == Live {
+			must(s.Move(ctx, share.ID, Live, Pending))
+		}
+		if n, _ := s.Usage(ctx, sam.ID); n != base+7 {
+			t.Fatalf("usage with a %s share: %d, want %d", state, n, base+7)
+		}
+	}
+	must(s.Move(ctx, share.ID, Deleted, Live))
+	if n, _ := s.Usage(ctx, sam.ID); n != base {
+		t.Fatalf("usage after deleting the share: %d, want %d", n, base)
+	}
+	if n, _ := s.SharesSince(ctx, sam.ID, t0); n != 1 {
+		t.Fatalf("shares since it was made: %d", n)
+	}
+	if n, _ := s.SharesSince(ctx, sam.ID, t0.Add(time.Second)); n != 0 {
+		t.Fatalf("shares since after it was made: %d", n)
+	}
 }

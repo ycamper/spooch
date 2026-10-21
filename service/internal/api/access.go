@@ -13,13 +13,10 @@ import (
 )
 
 // expiresIn is when a link lasts until, counting `days` from now: 0 for
-// the default, -1 for never.
+// the default.
 func (s *Server) expiresIn(days int) (*time.Time, error) {
-	if days < -1 || days > 3650 {
-		return nil, badRequest("expiry_days must be -1 (never) to 3650")
-	}
-	if days == -1 {
-		return nil, nil
+	if days < 0 || days > MaxExpiryDays {
+		return nil, badRequest(fmt.Sprintf("expiry_days must be 0 (the default, %d) to %d", DefaultExpiryDays, MaxExpiryDays))
 	}
 	if days == 0 {
 		days = DefaultExpiryDays

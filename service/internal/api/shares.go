@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -57,6 +58,24 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request, u store.User) {
 	share, recipients, err := s.newShare(ctx, u, req)
 	if err != nil {
 		failWith(w, err)
+		return
+	}
+	made, err := s.Store.SharesSince(ctx, u.ID, s.Now().Add(-24*time.Hour))
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if made >= MaxSharesPerDay {
+		fail(w, http.StatusTooManyRequests, fmt.Sprintf("that's %d shares today; try again tomorrow", MaxSharesPerDay))
+		return
+	}
+	used, err := s.Store.Usage(ctx, u.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if used+share.Size > s.Quota {
+		fail(w, http.StatusInsufficientStorage, "the account is full")
 		return
 	}
 	if err := s.Store.CreateShare(ctx, share, ids(recipients)); errors.Is(err, store.ErrExists) {

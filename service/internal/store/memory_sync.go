@@ -185,6 +185,11 @@ func (m *Memory) Usage(_ context.Context, owner int64) (int64, error) {
 		}
 		total += c.PendingSizes.Total()
 	}
+	for _, s := range m.shares {
+		if s.Owner == owner && (s.State == Live || s.State == Pending) {
+			total += s.Size
+		}
+	}
 	return total, nil
 }
 

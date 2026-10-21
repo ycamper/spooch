@@ -176,6 +176,18 @@ func (m *Memory) Shares(_ context.Context, owner int64) ([]Owned, error) {
 	return out, nil
 }
 
+func (m *Memory) SharesSince(_ context.Context, owner int64, since time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, s := range m.shares {
+		if s.Owner == owner && !s.Created.Before(since) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *Memory) SetAccess(_ context.Context, id string, public bool, expires *time.Time, recipients *[]int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

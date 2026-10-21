@@ -163,6 +163,13 @@ func (p *Postgres) Move(ctx context.Context, id string, to State, from ...State)
 		`UPDATE shares SET state = $2 WHERE id = $1 AND state = ANY($3)`, id, string(to), states))
 }
 
+func (p *Postgres) SharesSince(ctx context.Context, owner int64, since time.Time) (int, error) {
+	var n int
+	err := p.pool.QueryRow(ctx,
+		`SELECT count(*) FROM shares WHERE owner = $1 AND created >= $2`, owner, since).Scan(&n)
+	return n, err
+}
+
 func (p *Postgres) Shares(ctx context.Context, owner int64) ([]Owned, error) {
 	rows, err := p.pool.Query(ctx,
 		`SELECT `+shareColumns+`,
