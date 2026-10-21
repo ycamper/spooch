@@ -285,3 +285,16 @@ fn errors_are_told_apart_by_status() {
     let err = sign_in(&server, "mark", "nope", "pc").err();
     assert_eq!(err.as_deref(), Some("wrong name or password"));
 }
+
+#[test]
+fn clones_learn_where_links_point_together() {
+    let (server, _rx) =
+        serve(|_| vec![(200, r#"{"name":"mark","links":"https://img.test/"}"#.into())]);
+    let c = Client::new(&server, "spd_x");
+    let clone = c.clone();
+    assert!(c.is(&clone) && !c.is(&Client::new(&server, "spd_x")));
+    // Until `me` answers, links point at the server, which answers them too.
+    assert_eq!(clone.links_base(), server);
+    c.me().unwrap();
+    assert_eq!(clone.links_base(), "https://img.test");
+}
