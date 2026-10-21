@@ -36,8 +36,10 @@ the nginx site and the scripts that install and update it.
    secret (base62), and puts `PUBLIC_URL/<id><secret>` on the clipboard.
 2. `POST /v1/shares` with `{id, secret_hash, size, type, expiry_days}`
    (`secret_hash` is the lowercase hex SHA-256 of the secret;
-   `expiry_days` 0 for 30 days, -1 for never). The reply has a presigned
-   `upload_url`, signed for exactly that `Content-Type` and size.
+   `expiry_days` 0 for 30 days, at most 90). The reply has a presigned
+   `upload_url`, signed for exactly that `Content-Type` and size. Shares
+   count toward the account's quota like synced captures (507 when it's
+   full), and an account can make 100 a day (429 after that).
 3. The app PUTs the image there, then `POST /v1/shares/<id>/finalize`.
    The service checks the size and that it's really a PNG or JPEG, then
    copies it to where links read it, and only then does the link work.
@@ -53,7 +55,7 @@ Request bodies are strict JSON: unknown fields are refused.
   They see it in Spooch through `GET /v1/shared-with-me` and
   `GET /v1/shares/<id>/image`. Opened in a browser, an account-only link
   says to open Spooch; a web sign-in comes later.
-- **For N days**: `"expiry_days": N` (0 for 30 days, -1 for never).
+- **For N days**: `"expiry_days": N` (0 for 30 days, at most 90).
 
 All three can be set when sharing, and changed later with
 `PATCH /v1/shares/<id>`, sending only the fields to change.

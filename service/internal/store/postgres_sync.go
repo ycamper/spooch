@@ -184,10 +184,13 @@ func purge(ctx context.Context, tx pgx.Tx, owner int64, id string) (Capture, err
 func (p *Postgres) Usage(ctx context.Context, owner int64) (int64, error) {
 	var total int64
 	err := p.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(
-		   CASE WHEN gone THEN 0 ELSE doc_size + source_size + thumb_size END
-		   + COALESCE(pending_doc + pending_source + pending_thumb, 0)), 0)
-		 FROM captures WHERE owner = $1`, owner).Scan(&total)
+		`SELECT
+		   (SELECT COALESCE(SUM(
+		      CASE WHEN gone THEN 0 ELSE doc_size + source_size + thumb_size END
+		      + COALESCE(pending_doc + pending_source + pending_thumb, 0)), 0)
+		    FROM captures WHERE owner = $1)
+		 + (SELECT COALESCE(SUM(size), 0)
+		    FROM shares WHERE owner = $1 AND state IN ('live', 'pending'))`, owner).Scan(&total)
 	return total, err
 }
 

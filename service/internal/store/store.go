@@ -90,6 +90,9 @@ type Store interface {
 	Move(ctx context.Context, id string, to State, from ...State) error
 	// Shares lists an owner's live shares, newest first.
 	Shares(ctx context.Context, owner int64) ([]Owned, error)
+	// SharesSince counts the shares an owner made at or after `since`,
+	// deleted ones included.
+	SharesSince(ctx context.Context, owner int64, since time.Time) (int, error)
 	// SetAccess changes whether anyone with the link may view a share,
 	// until when, and, unless nil, who it's shared with.
 	SetAccess(ctx context.Context, id string, public bool, expires *time.Time, recipients *[]int64) error
@@ -138,7 +141,8 @@ type Captures interface {
 	// PurgeCapture keeps only the record of a capture, so devices learn
 	// it's gone, and returns it as it was, so its objects can go.
 	PurgeCapture(ctx context.Context, owner int64, id string) (Capture, error)
-	// Usage is how many bytes an owner's captures take, uploads included.
+	// Usage is how many bytes an owner's captures and live or pending
+	// shares take, uploads included.
 	Usage(ctx context.Context, owner int64) (int64, error)
 	// SweepCaptures purges up to `limit` captures trashed before
 	// `trashedBefore`, and drops uploads begun before `begunBefore`,

@@ -75,7 +75,7 @@ pub struct Options {
     pub public: bool,
     /// Accounts it's shared with, by name.
     pub recipients: Vec<String>,
-    /// 0 for the service's default (30 days), -1 for never.
+    /// 0 for the service's default (30 days), at most 90.
     pub expiry_days: i32,
 }
 

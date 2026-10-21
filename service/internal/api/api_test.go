@@ -31,7 +31,7 @@ type fixture struct {
 
 func setup(t *testing.T) *fixture {
 	f := &fixture{t: t, db: store.NewMemory(), files: storage.NewMemory(), now: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
-	f.srv = &Server{Store: f.db, Storage: f.files, PublicURL: "https://spooch.test", Now: func() time.Time { return f.now }}
+	f.srv = &Server{Store: f.db, Storage: f.files, PublicURL: "https://spooch.test", Quota: 1 << 30, Now: func() time.Time { return f.now }}
 	f.http = f.srv.Handler()
 	u, _ := f.db.AddUser(context.Background(), "mark")
 	f.device = token.NewDevice()
@@ -154,6 +154,13 @@ func TestRequestsAreValidated(t *testing.T) {
 			t.Fatalf("bad %s accepted: %d", field, w.Code)
 		}
 	}
+	// Links count toward the quota, so none lasts forever or very long.
+	for _, days := range []int{-1, MaxExpiryDays + 1} {
+		body := map[string]any{"id": token.Random(10), "secret_hash": token.Hash("s"), "size": 10, "type": "image/png", "expiry_days": days}
+		if w := f.do("POST", "/v1/shares", f.device, body); w.Code != http.StatusBadRequest {
+			t.Fatalf("expiry_days %d: %d", days, w.Code)
+		}
+	}
 	if w := f.do("POST", "/v1/shares", f.device, ok); w.Code != http.StatusCreated {
 		t.Fatalf("good request refused: %d %s", w.Code, w.Body)
 	}
@@ -176,7 +183,7 @@ func TestDeleteExpiryAndTheSweeper(t *testing.T) {
 	// A one-day link stops working after a day, and the sweeper clears it;
 	// so does a share that was never finalized.
 	short, _ := f.share(png, 1)
-	never, _ := f.share(png, -1)
+	never, _ := f.share(png, MaxExpiryDays)
 	other := token.Random(10)
 	f.do("POST", "/v1/shares", f.device, map[string]any{"id": other, "secret_hash": token.Hash("s"), "size": 5, "type": "image/png"})
 	f.now = f.now.Add(48 * time.Hour)
@@ -359,5 +366,50 @@ func TestBodiesAreStrict(t *testing.T) {
 	}
 	if w := f.do("GET", "/v1/me", f.device, nil); w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("the API doesn't say nosniff")
+	}
+}
+
+func TestSharesCountTowardTheQuota(t *testing.T) {
+	f := setup(t)
+	f.srv.Quota = int64(len(png)) * 2
+	f.share(png, 0)
+	link, w := f.share(png, 0)
+	if w.Code != http.StatusOK {
+		t.Fatalf("finalize: %d", w.Code)
+	}
+	full := map[string]any{"id": token.Random(10), "secret_hash": token.Hash("s"), "size": len(png), "type": "image/png"}
+	if w := f.do("POST", "/v1/shares", f.device, full); w.Code != http.StatusInsufficientStorage {
+		t.Fatalf("a full account shared: %d", w.Code)
+	}
+	// Captures and shares share the quota.
+	if _, b := f.upload(token.Random(CaptureIDLen), 0, png); b["code"] != http.StatusInsufficientStorage {
+		t.Fatalf("a capture went over the quota: %v", b)
+	}
+	// Deleting a share frees its space.
+	if w := f.do("DELETE", "/v1/shares/"+link[1:11], f.device, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", w.Code)
+	}
+	if w := f.do("POST", "/v1/shares", f.device, full); w.Code != http.StatusCreated {
+		t.Fatalf("no room after deleting: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestSharesPerDayAreCapped(t *testing.T) {
+	f := setup(t)
+	create := func() int {
+		body := map[string]any{"id": token.Random(10), "secret_hash": token.Hash("s"), "size": 10, "type": "image/png"}
+		return f.do("POST", "/v1/shares", f.device, body).Code
+	}
+	for i := 0; i < MaxSharesPerDay; i++ {
+		if code := create(); code != http.StatusCreated {
+			t.Fatalf("share %d: %d", i+1, code)
+		}
+	}
+	if code := create(); code != http.StatusTooManyRequests {
+		t.Fatalf("one too many: %d", code)
+	}
+	f.now = f.now.Add(25 * time.Hour)
+	if code := create(); code != http.StatusCreated {
+		t.Fatalf("the next day: %d", code)
 	}
 }

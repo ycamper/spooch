@@ -25,6 +25,12 @@ const (
 	UploadTTL = 5 * time.Minute
 	// DefaultExpiryDays is how long a link lasts unless the app asks.
 	DefaultExpiryDays = 30
+	// MaxExpiryDays is the longest a link may last. Links count toward
+	// the quota, so none lasts forever.
+	MaxExpiryDays = 90
+	// MaxSharesPerDay is how many shares an account may make in a day,
+	// deleted ones included.
+	MaxSharesPerDay = 100
 	// Grace is how long a share may wait for its upload before it's
 	// cleared out.
 	Grace = time.Hour
