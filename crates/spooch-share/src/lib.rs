@@ -132,6 +132,17 @@ impl Client {
             .set("Authorization", &format!("Bearer {}", self.token))
     }
 
+    /// Where links point: as `me` said, or the server until then, which
+    /// answers them too.
+    fn links_base(&self) -> &str {
+        self.links.get().unwrap_or(&self.server)
+    }
+
+    /// Whether `other` is a clone of this client.
+    pub fn is(&self, other: &Client) -> bool {
+        Arc::ptr_eq(&self.links, &other.links)
+    }
+
     /// The account the token belongs to. Also learns where links point.
     pub fn me(&self) -> Result<String, String> {
         let me: Me = read(self.api("GET", "/me").call())?;
@@ -148,7 +159,7 @@ impl Client {
         done: impl FnOnce(Result<String, String>) + Send + 'static,
     ) -> String {
         let link = Link::new();
-        let url = link.url(self.links.get().unwrap_or(&self.server));
+        let url = link.url(self.links_base());
         let client = self.clone();
         let shown = url.clone();
         thread::spawn(move || done(client.upload(&link, &png, &options).map(|()| shown)));

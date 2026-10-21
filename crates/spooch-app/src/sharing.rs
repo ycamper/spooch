@@ -4,6 +4,7 @@
 //! through forms each shell shows its own way.
 
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use spooch_platform::app::Signed;
 use spooch_platform::log;
@@ -119,9 +120,36 @@ impl Sharing {
             };
             let client = Client::new(&loading.server, &token);
             loading.lock().client = Some(client.clone());
-            match client.me() {
-                Ok(name) => loading.lock().account = Some(name),
-                Err(e) => log::line(format!("sharing: {e}")),
+            // Spooch often starts before the network is up. Until `me`
+            // answers, links would point at the API server, so keep asking.
+            let mut wait = Duration::from_secs(5);
+            let mut failed = false;
+            loop {
+                match client.me() {
+                    Ok(name) => {
+                        if failed {
+                            log::line("sharing: reached the service");
+                        }
+                        loading.lock().account = Some(name);
+                        return;
+                    }
+                    Err(e) if !failed => {
+                        log::line(format!("sharing: {e}; trying again"));
+                        failed = true;
+                    }
+                    Err(_) => {}
+                }
+                std::thread::sleep(wait);
+                // Signed out, or in again with another token, meanwhile.
+                if !loading
+                    .lock()
+                    .client
+                    .as_ref()
+                    .is_some_and(|c| c.is(&client))
+                {
+                    return;
+                }
+                wait = (wait * 2).min(Duration::from_secs(300));
             }
         });
         sharing
