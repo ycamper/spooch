@@ -17,7 +17,8 @@ import (
 	"github.com/ycamper/spooch/service/internal/token"
 )
 
-var png = append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, bytes.Repeat([]byte{7}, 100)...)
+// png is a real 8x8 image, since uploads are decoded.
+var png = encodePNG(8, 8)
 
 type fixture struct {
 	t      *testing.T
@@ -128,7 +129,8 @@ func TestDeviceTokensAreChecked(t *testing.T) {
 
 func TestAnUploadThatIsntTheDeclaredImageIsRefused(t *testing.T) {
 	f := setup(t)
-	link, w := f.share([]byte("<html>not a png, but the same length......................................................................"), 0)
+	fake := append([]byte("<html>"), bytes.Repeat([]byte("."), len(png)-6)...)
+	link, w := f.share(fake, 0)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("finalize took a fake: %d %s", w.Code, w.Body)
 	}
