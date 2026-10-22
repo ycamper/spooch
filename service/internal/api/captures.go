@@ -1,11 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -32,13 +30,12 @@ const (
 type part struct {
 	name, contentType string
 	max               int64
-	magic             []byte
 }
 
 var parts = []part{
-	{"doc", "application/json", 4 << 20, []byte("{")},
-	{"source", "image/png", 64 << 20, magic["image/png"]},
-	{"thumb", "image/png", 2 << 20, magic["image/png"]},
+	{"doc", "application/json", 4 << 20},
+	{"source", "image/png", 64 << 20},
+	{"thumb", "image/png", 2 << 20},
 }
 
 func partSize(s store.Sizes, name string) int64 {
@@ -183,7 +180,7 @@ func (s *Server) finishCapture(w http.ResponseWriter, r *http.Request, u store.U
 		return
 	}
 	for _, p := range parts {
-		good, err := s.uploaded(ctx, captureKey(u.ID, id, req.Version, p.name), partSize(c.PendingSizes, p.name), p.magic)
+		problem, err := s.checkUpload(ctx, captureKey(u.ID, id, req.Version, p.name), partSize(c.PendingSizes, p.name), p.contentType)
 		switch {
 		case errors.Is(err, storage.ErrNotFound):
 			fail(w, http.StatusConflict, p.name+" hasn't been uploaded yet")
@@ -191,8 +188,8 @@ func (s *Server) finishCapture(w http.ResponseWriter, r *http.Request, u store.U
 		case err != nil:
 			serverError(w, err)
 			return
-		case !good:
-			fail(w, http.StatusUnprocessableEntity, p.name+" isn't what was declared")
+		case problem != "":
+			fail(w, http.StatusUnprocessableEntity, p.name+" isn't what was declared: "+problem)
 			return
 		}
 	}
@@ -205,26 +202,6 @@ func (s *Server) finishCapture(w http.ResponseWriter, r *http.Request, u store.U
 		s.removeVersion(ctx, u.ID, id, before.Version)
 	}
 	reply(w, http.StatusOK, map[string]any{"version": req.Version})
-}
-
-// uploaded checks an upload is `size` bytes and starts with `head`.
-func (s *Server) uploaded(ctx context.Context, key string, size int64, head []byte) (bool, error) {
-	n, err := s.Storage.Size(ctx, key)
-	if err != nil || n != size {
-		return false, err
-	}
-	f, err := s.Storage.Open(ctx, key)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	got := make([]byte, len(head))
-	if _, err := io.ReadFull(f, got); errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	return bytes.Equal(got, head), nil
 }
 
 // changes lists what changed after `since`, with thumbnail URLs for

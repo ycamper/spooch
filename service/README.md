@@ -41,8 +41,11 @@ the nginx site and the scripts that install and update it.
    count toward the account's quota like synced captures (507 when it's
    full), and an account can make 100 a day (429 after that).
 3. The app PUTs the image there, then `POST /v1/shares/<id>/finalize`.
-   The service checks the size and that it's really a PNG or JPEG, then
-   copies it to where links read it, and only then does the link work.
+   The service checks the size and decodes the whole image. It refuses
+   anything that isn't a plain PNG or JPEG: data after the image's end,
+   more than 256 KB of metadata, or over 50 megapixels. Then it copies it
+   to where links read it, and only then does the link work. Synced
+   captures' images get the same check, and their document must be JSON.
 
 Every API call carries `Authorization: Bearer <token>`. `GET /v1/me`
 names the account and gives `links`, the `PUBLIC_URL` links start with.

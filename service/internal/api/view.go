@@ -73,6 +73,7 @@ func (s *Server) serveImage(w http.ResponseWriter, r *http.Request, share store.
 	defer f.Close()
 	h := w.Header()
 	h.Set("Content-Type", share.Type)
+	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Length", strconv.FormatInt(share.Size, 10))
 	h.Set("Content-Disposition", `inline; filename="spooch.`+types[share.Type]+`"`)
 	h.Set("Cache-Control", cache)

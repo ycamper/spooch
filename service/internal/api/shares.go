@@ -1,11 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -141,11 +139,6 @@ func (s *Server) owned(w http.ResponseWriter, r *http.Request, u store.User) (st
 }
 
 // Magic numbers for the types a share may hold.
-var magic = map[string][]byte{
-	"image/png":  {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'},
-	"image/jpeg": {0xff, 0xd8, 0xff},
-}
-
 func (s *Server) finalize(w http.ResponseWriter, r *http.Request, u store.User) {
 	share, ok := s.owned(w, r, u)
 	if !ok {
@@ -157,7 +150,7 @@ func (s *Server) finalize(w http.ResponseWriter, r *http.Request, u store.User) 
 		return
 	}
 	ctx := r.Context()
-	good, err := s.verify(ctx, share)
+	problem, err := s.checkUpload(ctx, uploadKey(share.ID), share.Size, share.Type)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
 		fail(w, http.StatusConflict, "nothing has been uploaded yet")
@@ -165,11 +158,11 @@ func (s *Server) finalize(w http.ResponseWriter, r *http.Request, u store.User) 
 	case err != nil:
 		serverError(w, err)
 		return
-	case !good:
+	case problem != "":
 		if err := s.Store.Move(ctx, share.ID, store.Deleted, store.Pending); err == nil {
 			s.purge(ctx, share.ID)
 		}
-		fail(w, http.StatusUnprocessableEntity, "the upload isn't the image that was declared")
+		fail(w, http.StatusUnprocessableEntity, "the upload isn't the image that was declared: "+problem)
 		return
 	}
 	if err := s.Storage.Copy(ctx, uploadKey(share.ID), shareKey(share.ID)); err != nil {
@@ -186,28 +179,6 @@ func (s *Server) finalize(w http.ResponseWriter, r *http.Request, u store.User) 
 		log.Printf("finalize %s: removing the upload: %v", share.ID, err)
 	}
 	reply(w, http.StatusOK, live)
-}
-
-// verify checks the upload is the image the share declared: its size,
-// and how it starts.
-func (s *Server) verify(ctx context.Context, share store.Share) (bool, error) {
-	size, err := s.Storage.Size(ctx, uploadKey(share.ID))
-	if err != nil || size != share.Size {
-		return false, err
-	}
-	f, err := s.Storage.Open(ctx, uploadKey(share.ID))
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	want := magic[share.Type]
-	head := make([]byte, len(want))
-	if _, err := io.ReadFull(f, head); errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	return bytes.Equal(head, want), nil
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request, u store.User) {
