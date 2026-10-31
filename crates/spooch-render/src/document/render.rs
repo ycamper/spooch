@@ -124,14 +124,16 @@ impl Document {
                 if l.look.auto_edge {
                     l.look.edge = Some(Mark::Label(l.clone()).auto_edge(&self.base, Some(tf)));
                 }
+                let area = Mark::Label(l.clone()).reach(Some(tf));
+                let edge = grid.as_ref().and_then(|_| pixel::outline_of(&mut l.look));
                 let typed = |c: &Canvas| {
                     c.save();
                     c.rotate(l.angle.to_degrees(), Some(l.pivot(tf)));
                     l.draw(c, tf, Some(self.caret));
                     c.restore();
                 };
-                match (&grid, Mark::Label(l.clone()).reach(Some(tf))) {
-                    (Some(grid), Some(area)) => grid.draw(canvas, area, None, typed),
+                match (&grid, area) {
+                    (Some(grid), Some(area)) => grid.draw(canvas, area, edge, typed),
                     _ => typed(canvas),
                 }
             }

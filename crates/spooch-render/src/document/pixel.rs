@@ -35,19 +35,21 @@ pub(super) struct Grid {
 
 impl Grid {
     /// Run `draw` (in desktop pixels) at one pixel per cell over `area`,
-    /// cut every cell to fully inked or clear, outline the ink one cell
-    /// wide in `edge`, and put the cells onto `onto`, each a crisp square.
+    /// cut every cell to fully inked or clear, outline the ink in `edge`
+    /// (a colour and a width in cells), and put the cells onto `onto`,
+    /// each a crisp square.
     pub(super) fn draw(
         &self,
         onto: &Canvas,
         area: Rect,
-        edge: Option<Color4f>,
+        edge: Option<(Color4f, u8)>,
         draw: impl FnOnce(&Canvas),
     ) {
         const CLEAR: Color4f = Color4f::new(0.0, 0.0, 0.0, 0.0);
         let c = self.cell;
-        // A cell spare on each side for the outline.
-        let mut area = area.with_outset((c, c));
+        // Room on each side for the outline.
+        let spare = c * f32::from(edge.map_or(0, |(_, cells)| cells));
+        let mut area = area.with_outset((spare, spare));
         if !area.intersect(self.clip) {
             return;
         }
@@ -74,23 +76,15 @@ impl Grid {
         let mut cut = Paint::default();
         cut.set_color_filter(alpha_cut());
         s.draw_image(&soft, (0, 0), Some(&cut));
-        if let Some(e) = edge {
-            // The ink in the edge colour, a cell every way round it.
+        if let Some((e, cells)) = edge {
+            // The ink in the edge colour, `cells` every way round it.
             let hard = surface.image_snapshot();
             let s = surface.canvas();
             let mut ring = Paint::default();
             ring.set_color_filter(color_filters::blend(e.to_color(), BlendMode::SrcIn));
             ring.set_blend_mode(BlendMode::DstOver);
-            for (dx, dy) in [
-                (-1, -1),
-                (0, -1),
-                (1, -1),
-                (-1, 0),
-                (1, 0),
-                (-1, 1),
-                (0, 1),
-                (1, 1),
-            ] {
+            let n = i32::from(cells);
+            for (dx, dy) in (-n..=n).flat_map(|x| (-n..=n).map(move |y| (x, y))) {
                 s.draw_image(&hard, (dx, dy), Some(&ring));
             }
         }
@@ -103,6 +97,15 @@ impl Grid {
             &Paint::default(),
         );
     }
+}
+
+/// Ready `look` for pixel art: no soft shadow, and its edge taken out to
+/// be drawn as an outline instead, 1 to 3 cells wide as the outline slider
+/// says.
+pub(super) fn outline_of(look: &mut crate::Look) -> Option<(Color4f, u8)> {
+    look.shadow = false;
+    let cells = look.edge_width.round().clamp(1.0, 3.0) as u8;
+    look.edge.take().map(|e| (e, cells))
 }
 
 /// A filter that makes every cell fully opaque or fully clear, so edges

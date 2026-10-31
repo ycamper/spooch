@@ -167,6 +167,12 @@ fn pixel_mode_draws_whole_cells_and_switches_back() {
     assert_eq!(back.mode(), Mode::Pixel);
     d.set_mode(Mode::Clean);
     assert_eq!(d.export(), clean);
+    // The outline slider widens the outline: more dark cells.
+    d.set_mode(Mode::Pixel);
+    let dark = |out: &[u8]| out.as_chunks::<4>().0.iter().filter(|p| p[1] < 60).count();
+    let thin = dark(&pixel);
+    assert!(d.set_edge_width(4));
+    assert!(dark(&d.export()) > thin + 100, "outline didn't widen");
 }
 
 #[test]

@@ -77,12 +77,8 @@ impl Mark {
         let Some((grid, area)) = pixel else {
             return self.draw(canvas, base, typeface, scale, number);
         };
-        // The cells draw the edge as a one-cell outline round the ink.
         let mut ink = self.with_edge_picked(base, typeface).into_owned();
-        let edge = ink.look_mut().and_then(|l| {
-            l.shadow = false;
-            l.edge.take()
-        });
+        let edge = ink.look_mut().and_then(pixel::outline_of);
         self.faded(canvas, |c| {
             grid.draw(c, area, edge, |c| {
                 ink.draw_solid(c, base, typeface, scale, number)
