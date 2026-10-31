@@ -499,3 +499,47 @@ fn after_saving_in_the_window_save_shows_the_picture_until_an_edit() {
     assert_eq!(s.save_or_show(), save);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn only_a_capture_that_was_used_is_kept() {
+    let dir = std::env::temp_dir().join(format!("spooch-app-wanted-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let recents = Recents::new(dir.clone());
+    let keep = |s: &mut Session| {
+        let (tx, rx) = mpsc::channel();
+        s.keep_in_background(move |line| {
+            let _ = tx.send(line);
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap()
+    };
+    // Cancelled without copying: let go.
+    let (mut cancelled, _) = session(Some(recents.clone()), 1);
+    assert!(keep(&mut cancelled).starts_with("not kept"));
+    assert!(recents.list().is_empty());
+    // Copied: kept.
+    let (mut copied, _) = session(Some(recents.clone()), 2);
+    let ctrl = Mods { ctrl: true, ..NONE };
+    assert!(
+        copied
+            .key(Key::Char('c'), ctrl)
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Deliver { .. }))
+    );
+    assert!(keep(&mut copied).starts_with("kept in recents"));
+    assert_eq!(recents.list(), vec![copied.id().to_string()]);
+    // Taken to the editor window: kept.
+    let (s, _) = session(Some(recents.clone()), 3);
+    let mut window = s.into_window();
+    assert!(keep(&mut window).starts_with("kept in recents"));
+    // Reopened from Recents and cancelled: still there, kept as before.
+    let (mut reopened, _) = Session::reopen(
+        Some(&recents),
+        copied.id(),
+        vec![IRect::from_wh(400, 300)],
+        Styles::default(),
+    )
+    .unwrap();
+    assert!(keep(&mut reopened).starts_with("kept in recents"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

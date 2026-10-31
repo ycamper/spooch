@@ -31,6 +31,7 @@ impl Session {
     /// `Effect::CopyText`; the Share button says how the upload goes.
     pub(super) fn share(&mut self, r: &mut Response) {
         r.repaint = true;
+        self.wanted = true;
         self.doc.commit_text();
         self.drop_stale_link();
         if let Some((link, _)) = &self.link {
