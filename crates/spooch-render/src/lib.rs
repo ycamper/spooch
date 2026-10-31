@@ -376,8 +376,8 @@ impl Plate {
         const WHITE: Color4f = Color4f::new(1.0, 1.0, 1.0, 1.0);
         const INK: Color4f = Color4f::new(0.08, 0.085, 0.1, 1.0);
         const DARK: Color4f = Color4f::new(0.11, 0.118, 0.137, 1.0);
-        let light = luminance(colour) > 0.6;
-        let dark = luminance(colour) < 0.2;
+        let l = luminance(colour);
+        let (light, dark) = (l > 0.6, l < 0.2);
         match self {
             Plate::Outlined => None,
             Plate::Bubble => Some((WHITE, if light { INK } else { colour })),
@@ -863,6 +863,24 @@ impl Label {
     pub fn draw(&self, canvas: &Canvas, typeface: &Typeface, caret: Option<Caret>) {
         let typeface = &self.face(typeface);
         let s = self.size;
+        // The plate first, under any selection.
+        let plated = self
+            .shown_plate()
+            .and_then(|p| Some((p, p.colours(self.color)?)));
+        if let Some((plate, (behind, _))) = plated {
+            let r = self.bounds(typeface);
+            let radius = plate.radius(r.height(), s);
+            let mut pb = PathBuilder::new();
+            pb.add_rrect(RRect::new_rect_xy(r, radius, radius), None, None);
+            draw_filled(
+                canvas,
+                &pb.detach(),
+                behind,
+                None,
+                0.0,
+                (s * 0.12, s * 0.06),
+            );
+        }
         // Text as a path, so outline, shadow and fill line up exactly.
         let text = self.layout(typeface);
         let mut path = text.path;
@@ -929,23 +947,6 @@ impl Label {
                 .detach()
                 .make_transform(&(Matrix::translate(foot) * Matrix::rotate_rad(turn)));
             path = path.op(&bar, skia_safe::PathOp::Union).unwrap_or(path);
-        }
-        let plated = self
-            .shown_plate()
-            .and_then(|p| Some((p, p.colours(self.color)?)));
-        if let Some((plate, (behind, _))) = plated {
-            let r = self.bounds(typeface);
-            let radius = plate.radius(r.height(), s);
-            let mut pb = PathBuilder::new();
-            pb.add_rrect(RRect::new_rect_xy(r, radius, radius), None, None);
-            draw_filled(
-                canvas,
-                &pb.detach(),
-                behind,
-                None,
-                0.0,
-                (s * 0.12, s * 0.06),
-            );
         }
         if path.is_empty() && text.colour.is_empty() {
             return;
