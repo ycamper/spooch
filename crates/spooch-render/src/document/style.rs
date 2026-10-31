@@ -398,13 +398,16 @@ impl Document {
     }
 
     /// What the style row shows: the selected mark's style if it has one,
-    /// else the label being typed, else the current tool's. `None` hides
-    /// the row (solid redact has no style).
+    /// else the label being typed, else the mark just drawn, else the
+    /// current tool's. `None` hides the row (solid redact has no style).
     pub(crate) fn shown_style(&self) -> Option<(Style, Row)> {
         if !self.also.is_empty() {
             return self.shared_style();
         }
-        if let Some(m) = self.selected.and_then(|i| self.marks.get(i))
+        if let Some(m) = self
+            .selected
+            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()))
+            .and_then(|i| self.marks.get(i))
             && let Some(s) = self.style_of_mark(m)
         {
             let row = row_of(m).unwrap_or(Row::Full);
@@ -447,6 +450,16 @@ impl Document {
             });
         }
         Some((style?, row?))
+    }
+
+    /// The mark just drawn, while it's still the current tool's and
+    /// nothing is selected.
+    fn just_drawn(&self) -> Option<usize> {
+        if self.selected.is_some() || !self.also.is_empty() {
+            return None;
+        }
+        self.last_drawn
+            .filter(|&i| self.marks.get(i).and_then(tool_of) == Some(self.tool))
     }
 
     fn style_of_mark(&self, m: &Mark) -> Option<Style> {
@@ -545,8 +558,9 @@ impl Document {
         }
     }
 
-    /// Apply a change to the style on show: to the selected mark (one undo
-    /// step), the label being typed, or the current tool's next marks.
+    /// Apply a change to the style on show: to the selected mark or the one
+    /// just drawn (one undo step), the label being typed, or the current
+    /// tool's next marks.
     fn change_style(&mut self, change: impl Fn(&mut Style)) -> bool {
         if self.is_dragging() {
             return false;
@@ -593,7 +607,10 @@ impl Document {
             return false;
         }
         // New marks of the same kind follow the last pick too.
-        let remember = if let Some(i) = self.selected.filter(|&i| i < self.marks.len()) {
+        let target = self
+            .selected
+            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()));
+        let remember = if let Some(i) = target.filter(|&i| i < self.marks.len()) {
             if checkpoint {
                 self.checkpoint();
             }
@@ -945,6 +962,61 @@ mod tests {
         d.set_tool(Tool::Line);
         assert!(d.set_size(4));
         assert!(!d.step_size(true));
+    }
+
+    #[test]
+    fn picking_restyles_the_mark_just_drawn() {
+        let (mut d, _) = placed();
+        assert!(drag(&mut d, (120.0, 150.0), (280.0, 150.0)));
+        assert!(!d.has_selection(), "no handles in the way of the next drag");
+        assert!(d.set_colour(3));
+        assert!(d.step_size(true));
+        let Mark::Arrow(a) = &d.marks[0] else {
+            panic!("not an arrow")
+        };
+        assert_eq!((a.color, a.width), (PALETTE[3], 11.0));
+        // The next arrow follows the pick too.
+        assert_eq!(d.tool_style(), style(3, 3));
+        // One undo step each, then the arrow itself.
+        assert!(d.undo());
+        assert!(d.undo());
+        assert_eq!(d.marks.len(), 1);
+        assert!(d.undo());
+        assert!(d.marks.is_empty());
+        // Once the next drag starts, a pick is for the new mark only.
+        assert!(drag(&mut d, (120.0, 150.0), (280.0, 150.0)));
+        click(&mut d, 20.0, 20.0);
+        assert!(d.set_colour(5));
+        let Mark::Arrow(a) = &d.marks[0] else {
+            panic!("not an arrow")
+        };
+        assert_eq!(a.color, PALETTE[3], "undo leaves the tool's last pick");
+        // Another tool shows its own style, and leaves the arrow be.
+        assert!(drag(&mut d, (120.0, 180.0), (280.0, 180.0)));
+        d.set_tool(Tool::Box);
+        assert!(d.set_colour(1));
+        let Mark::Arrow(a) = &d.marks[1] else {
+            panic!("not an arrow")
+        };
+        assert_eq!(a.color, PALETTE[5]);
+    }
+
+    #[test]
+    fn picking_restyles_a_label_just_finished() {
+        let (mut d, _) = placed();
+        if d.typeface.is_none() {
+            eprintln!("no system fonts; skipping");
+            return;
+        }
+        d.set_tool(Tool::Text);
+        d.begin_text(Point::new(150.0, 150.0));
+        assert!(d.type_text("Hi"));
+        assert!(d.commit_text());
+        assert!(d.set_colour(4));
+        let Mark::Label(l) = &d.marks[0] else {
+            panic!("not a label")
+        };
+        assert_eq!(l.color, PALETTE[4]);
     }
 
     #[test]
