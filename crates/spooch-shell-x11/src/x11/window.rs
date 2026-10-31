@@ -375,6 +375,9 @@ impl App {
                 if matches!(sym, keys::XK_ALT_L | keys::XK_ALT_R) {
                     ew.dirty |= ew.session.doc.set_preview(false);
                 }
+                if let Some(k) = super::editor_key(&self.keys, sym, e.detail) {
+                    ew.session.key_up(k);
+                }
             }
             _ => return false,
         }

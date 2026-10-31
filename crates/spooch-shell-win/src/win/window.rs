@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetSystemMetrics, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible, LoadCursorW,
     MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE, SW_SHOWNORMAL,
     SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_APP, WM_CHAR,
-    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN,
     WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
@@ -380,6 +380,12 @@ extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
                 hwnd,
                 with_window(|e| e.session.wheel(p, notches, sideways, ctrl)),
             );
+            LRESULT(0)
+        }
+        WM_KEYUP => {
+            if let Some(k) = editor_key(wparam.0 as u16) {
+                with_window(|e| e.session.key_up(k));
+            }
             LRESULT(0)
         }
         WM_KEYDOWN => {

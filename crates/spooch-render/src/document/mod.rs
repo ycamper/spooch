@@ -412,6 +412,12 @@ pub struct Document {
     hover_mark: Option<HoverMark>,
     /// Whether Shift was down at the last press, as the shell said.
     shift: bool,
+    /// Whether Space is held while drawing, moving the shape instead of
+    /// stretching it.
+    space: bool,
+    /// Wheel notches not yet turned into a size step (touchpads send
+    /// fractions).
+    wheel_rest: f32,
     /// Whether the font dropdown under a label is open.
     font_menu: bool,
     /// Whether the grid of every sticker is open under the style row.
@@ -510,6 +516,8 @@ impl Document {
             editing: None,
             hover_mark: None,
             shift: false,
+            space: false,
+            wheel_rest: 0.0,
             font_menu: false,
             sticker_menu: false,
             preview: false,

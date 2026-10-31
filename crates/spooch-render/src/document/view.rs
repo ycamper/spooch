@@ -320,17 +320,23 @@ impl Document {
     }
 
     /// The mouse wheel turned by `notches` (positive away from the user)
-    /// with the pointer at `p`: with Ctrl it zooms about the pointer,
-    /// otherwise it scrolls, sideways when `sideways` (Shift, or a
-    /// sideways wheel).
+    /// with the pointer at `p`. Over the capture it steps the size, unless
+    /// the window has something to scroll. In the window, Ctrl zooms about
+    /// the pointer, and otherwise it scrolls, sideways when `sideways`
+    /// (Shift, or a sideways wheel).
     pub fn wheel(&mut self, p: Point, notches: f32, sideways: bool, ctrl: bool) -> bool {
-        let Some(v) = self.view else { return false };
+        let Some(v) = self.view else {
+            return !ctrl && !sideways && !self.on_chrome(p) && self.wheel_size(notches);
+        };
         if let Some(moved) = self.gallery_wheel(p, notches) {
             return moved;
         }
         if ctrl {
             let z = v.zoom * 1.15f32.powf(notches);
             return self.zoom_to(z, Some(p));
+        }
+        if !sideways && !self.on_chrome(p) && !self.scrolls() {
+            return self.wheel_size(notches);
         }
         let by = notches * WHEEL_STEP * self.scale / v.zoom;
         let before = v.center;
@@ -343,6 +349,18 @@ impl Document {
         }
         self.settle();
         self.view.is_some_and(|v| v.center != before)
+    }
+
+    /// Whether the capture, at this zoom, is bigger than the window's area,
+    /// so the wheel scrolls it.
+    fn scrolls(&self) -> bool {
+        let (Some(d), Some(v)) = (self.dock(), self.view) else {
+            return false;
+        };
+        let c = self.shown_rect();
+        let pad = 2.0 * FIT_PAD * self.scale;
+        (c.width() * v.zoom + pad) > d.area.width() as f32
+            || (c.height() * v.zoom + pad) > d.area.height() as f32
     }
 
     /// The top row: the zoom pill and Copy, then the window buttons at the
@@ -806,6 +824,22 @@ mod tests {
         assert_eq!(d.zoom(), 1.25);
         assert!(d.zoom_fit());
         assert!(d.view.unwrap().fit);
+    }
+
+    #[test]
+    fn the_wheel_sizes_until_there_is_something_to_scroll() {
+        let (mut d, _) = placed();
+        d.set_window_size(1200, 900);
+        let at = d.to_screen(Point::new(180.0, 140.0));
+        let before = d.tool_style().size;
+        assert!(d.wheel(at, 1.0, false, false));
+        assert_eq!(d.tool_style().size, before + 1);
+        // Zoomed past the window, it scrolls instead.
+        d.set_window_size(400, 300);
+        let at = d.to_screen(Point::new(180.0, 140.0));
+        assert!(d.wheel(at, 6.0, false, true));
+        assert!(d.wheel(at, -1.0, false, false));
+        assert_eq!(d.tool_style().size, before + 1);
     }
 
     #[test]

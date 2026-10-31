@@ -129,6 +129,7 @@ impl Document {
         let p = self.to_doc(p);
         self.pointer = p;
         self.last_drawn = None;
+        self.space = false;
         // A press on the label being typed moves the caret (Shift extends
         // the selection), and dragging selects.
         if let (Some(l), Some(tf)) = (&self.typing, &self.typeface) {
@@ -219,8 +220,17 @@ impl Document {
         }
         let ui = self.ui_px();
         let bounds = self.base_rect();
+        let space = self.space;
         match self.gesture.as_mut() {
             Some(Gesture::Draw { drag, path, .. }) if drag.to != p => {
+                // Space held moves the shape so far along with the pointer.
+                if space {
+                    let by = p - drag.to;
+                    drag.from += by;
+                    for q in path.iter_mut() {
+                        *q += by;
+                    }
+                }
                 drag.to = p;
                 // The pen keeps samples a couple of pixels apart; denser
                 // ones only add jitter.

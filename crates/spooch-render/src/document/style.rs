@@ -705,6 +705,43 @@ impl Document {
         })
     }
 
+    /// The wheel turned `notches` over the capture: each whole notch steps
+    /// the size as `[` and `]` do, or mid-draw the size of the shape being
+    /// drawn.
+    pub(super) fn wheel_size(&mut self, notches: f32) -> bool {
+        if self.wheel_rest * notches < 0.0 {
+            self.wheel_rest = 0.0;
+        }
+        self.wheel_rest += notches;
+        let mut changed = false;
+        while self.wheel_rest.abs() >= 1.0 {
+            let bigger = self.wheel_rest > 0.0;
+            self.wheel_rest -= self.wheel_rest.signum();
+            let drawing = match &self.gesture {
+                Some(super::pointer::Gesture::Draw { drag, .. }) => Some(drag.tool),
+                _ => None,
+            };
+            changed |= match drawing {
+                Some(tool) if tool.row().is_some() => {
+                    let s = &mut self.styles.tools[tool_index(tool)];
+                    let before = s.size;
+                    s.size = if bigger {
+                        (s.size + 1).min(SIZES as u8 - 1)
+                    } else {
+                        s.size.saturating_sub(1)
+                    };
+                    s.size != before
+                }
+                Some(_) => false,
+                None => self.step_size(bigger),
+            };
+        }
+        if changed {
+            self.chrome_key = None;
+        }
+        changed
+    }
+
     /// The sticker the tool stamps: the one picked last.
     pub(super) fn sticker(&self) -> &'static str {
         self.recent_stickers()[0]

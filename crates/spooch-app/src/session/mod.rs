@@ -320,9 +320,10 @@ impl Session {
         }
     }
 
-    /// The mouse wheel, in the editor window: `notches` away from the
-    /// user, at `p`. Ctrl zooms about the pointer; otherwise it scrolls,
-    /// sideways when `sideways`.
+    /// The mouse wheel: `notches` away from the user, at `p`. Over the
+    /// capture it steps the size, unless the editor window has something
+    /// to scroll; there, Ctrl zooms about the pointer, and otherwise it
+    /// scrolls, sideways when `sideways`.
     pub fn wheel(&mut self, p: Point, notches: f32, sideways: bool, ctrl: bool) -> Response {
         Response {
             repaint: self.doc.wheel(p, notches, sideways, ctrl),
@@ -443,6 +444,11 @@ impl Session {
     /// pastes copied marks, Ctrl+E moves the overlay's capture into the
     /// window, and in the window Ctrl+C copies the selected marks when
     /// there are some.
+    /// A key was let go.
+    pub fn key_up(&mut self, key: Key) {
+        self.doc.key_up(key);
+    }
+
     pub fn key(&mut self, key: Key, mods: Mods) -> Response {
         let mut r = self.keyed(key, mods);
         r.repaint |= self.drop_stale_link() | self.drop_stale_save();

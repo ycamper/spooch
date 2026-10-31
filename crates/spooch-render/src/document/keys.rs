@@ -80,6 +80,13 @@ pub enum KeyOutcome {
 }
 
 impl Document {
+    /// A key was let go: Space stops moving the shape being drawn.
+    pub fn key_up(&mut self, key: Key) {
+        if key == Key::Char(' ') {
+            self.space = false;
+        }
+    }
+
     /// A key press in the editor.
     ///
     /// While a label is being typed, arrows, Home and End move the caret
@@ -95,9 +102,17 @@ impl Document {
     /// PageDown step through recents; Shift+1 to 8 pick a colour; [ and ]
     /// step the size; digits pick the tool. Arrows nudge the selected
     /// marks, or with none selected the canvas edge nearest the pointer, a
-    /// pixel at a time (ten with Shift).
+    /// pixel at a time (ten with Shift). Space held while drawing moves the
+    /// shape instead of stretching it, until `key_up`.
     pub fn key(&mut self, key: Key, mods: Mods) -> KeyOutcome {
         let handled = |changed| KeyOutcome::Handled { changed };
+        // Space while drawing moves the shape until it's let go.
+        if key == Key::Char(' ')
+            && matches!(self.gesture, Some(super::pointer::Gesture::Draw { .. }))
+        {
+            self.space = true;
+            return handled(false);
+        }
         // A run of nudges is one undo step; anything else ends the run.
         if key.nudge(false).is_none() {
             self.nudged = false;

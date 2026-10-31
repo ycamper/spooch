@@ -34,9 +34,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
     GetCursorPos, GetWindowLongPtrW, IDC_CROSS, LoadCursorW, MSG, PM_REMOVE, PeekMessageW,
     PostMessageW, RegisterClassExW, SW_HIDE, SW_SHOW, SetCursor, SetCursorPos, SetForegroundWindow,
-    SetWindowLongPtrW, ShowWindow, WM_APP, WM_CHAR, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    SetWindowLongPtrW, ShowWindow, WM_APP, WM_CHAR, WM_ERASEBKGND, WM_KEYDOWN, WM_KEYUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP,
+    WM_SETCURSOR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_POPUP,
 };
 use windows::core::BOOL;
 use windows::core::{PCWSTR, w};
@@ -382,6 +383,27 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 picked(o, pick);
             });
             invalidate_all();
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            let notches = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32 / 120.0;
+            let ctrl = mods_now().ctrl;
+            let changed = with_overlay(|o| {
+                let (x, y) = o.picker.pointer();
+                let p = DocPoint::new(x as f32, y as f32);
+                o.editor
+                    .as_mut()
+                    .is_some_and(|ed| ed.wheel(p, notches, false, ctrl).repaint)
+            });
+            if changed == Some(true) {
+                invalidate_all();
+            }
+            LRESULT(0)
+        }
+        WM_KEYUP => {
+            if let Some(k) = editor_key(wparam.0 as u16) {
+                with_overlay(|o| o.editor.as_mut().map(|ed| ed.key_up(k)));
+            }
             LRESULT(0)
         }
         WM_CHAR => {
