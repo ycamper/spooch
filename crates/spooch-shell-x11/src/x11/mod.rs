@@ -207,7 +207,10 @@ pub fn run() -> Result<(), String> {
     let editor = args.editor;
     let config = Config::new(system::config_dir());
     let Loaded {
-        settings, styles, ..
+        settings,
+        styles,
+        format,
+        ..
     } = config.load_or_default(Styles::default());
     // Every capture is kept so it can be reopened, unless --no-recents.
     let recents = args.recents(Some(
@@ -342,7 +345,8 @@ pub fn run() -> Result<(), String> {
         clipboard: Clipboard::new(owner, atoms),
         xdnd,
         offer: None,
-        carry: Carry::new(styles, recents, &settings),
+        carry: Carry::new(styles, recents, &settings)
+            .keeping_picks_in(config.styles_path(), format),
         session: None,
         editor_window: None,
         once,

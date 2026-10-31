@@ -222,7 +222,7 @@ impl Palette {
     }
 }
 
-fn tool_index(tool: Tool) -> usize {
+pub(super) fn tool_index(tool: Tool) -> usize {
     Tool::ALL.iter().position(|t| *t == tool).unwrap_or(0)
 }
 

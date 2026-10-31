@@ -21,6 +21,7 @@ mod guides;
 mod keys;
 mod mark;
 mod pointer;
+mod remembered;
 mod render;
 mod saved;
 mod style;
