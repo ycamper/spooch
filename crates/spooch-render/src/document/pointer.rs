@@ -419,6 +419,14 @@ impl Document {
         self.gesture.is_some()
     }
 
+    /// The tool of the mark being drawn, if one is.
+    pub(super) fn drawing(&self) -> Option<Tool> {
+        match &self.gesture {
+            Some(Gesture::Draw { drag, .. }) => Some(drag.tool),
+            _ => None,
+        }
+    }
+
     /// The annotation a drag makes, or `None` for a stray click. `path` is
     /// the pen's samples.
     pub(super) fn shape(&self, d: Drag, path: &[Point]) -> Option<Mark> {

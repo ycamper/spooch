@@ -440,6 +440,14 @@ fn the_wheel_sizes_and_space_moves_the_shape_being_drawn() {
     assert_eq!(d.tool_style().size, before + 1);
     assert!(d.wheel(at, -1.0, false, false));
     assert_eq!(d.tool_style().size, before);
+    // Junk from a shell changes nothing and doesn't stick.
+    assert!(!d.wheel(at, f32::NAN, false, false));
+    assert!(!d.wheel(at, f32::INFINITY, false, false));
+    assert!(d.wheel(at, -1.0, false, false));
+    assert!(d.wheel(at, -1.0e9, false, false));
+    assert_eq!(d.tool_style().size, 0);
+    assert!(d.wheel(at, 2.0, false, false));
+    assert_eq!(d.tool_style().size, before);
     // Mid-draw the wheel sizes the box being drawn, and Space moves it.
     d.begin_drag(Point::new(120.0, 120.0));
     d.drag_to(Point::new(150.0, 150.0));

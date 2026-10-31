@@ -43,7 +43,7 @@ use windows::core::BOOL;
 use windows::core::{PCWSTR, w};
 
 use super::editing::{
-    blit_from, cursor_id, dib_with, drag_dir, drag_slop, editor_key, mods_now, shell_drag,
+    Wheel, blit_from, cursor_id, dib_with, drag_dir, drag_slop, editor_key, mods_now, shell_drag,
 };
 use super::log::{self, Stopwatch};
 
@@ -386,14 +386,13 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {
-            let notches = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32 / 120.0;
-            let ctrl = mods_now().ctrl;
+            let w = Wheel::from(msg, wparam);
             let changed = with_overlay(|o| {
                 let (x, y) = o.picker.pointer();
                 let p = DocPoint::new(x as f32, y as f32);
                 o.editor
                     .as_mut()
-                    .is_some_and(|ed| ed.wheel(p, notches, false, ctrl).repaint)
+                    .is_some_and(|ed| ed.wheel(p, w.notches, w.sideways, w.ctrl).repaint)
             });
             if changed == Some(true) {
                 invalidate_all();

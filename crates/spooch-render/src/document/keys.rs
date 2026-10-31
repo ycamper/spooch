@@ -103,13 +103,11 @@ impl Document {
     /// step the size; digits pick the tool. Arrows nudge the selected
     /// marks, or with none selected the canvas edge nearest the pointer, a
     /// pixel at a time (ten with Shift). Space held while drawing moves the
-    /// shape instead of stretching it, until `key_up`.
+    /// shape instead of stretching it.
     pub fn key(&mut self, key: Key, mods: Mods) -> KeyOutcome {
         let handled = |changed| KeyOutcome::Handled { changed };
         // Space while drawing moves the shape until it's let go.
-        if key == Key::Char(' ')
-            && matches!(self.gesture, Some(super::pointer::Gesture::Draw { .. }))
-        {
+        if key == Key::Char(' ') && self.drawing().is_some() {
             self.space = true;
             return handled(false);
         }

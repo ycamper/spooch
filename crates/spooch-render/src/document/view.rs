@@ -254,18 +254,19 @@ impl Document {
         if dragging {
             return;
         }
-        let pad = FIT_PAD * self.scale / v.zoom;
-        let axis = |centre: f32, lo: f32, hi: f32, room: f32| {
-            let half = room / 2.0 / v.zoom;
-            if hi - lo + 2.0 * pad <= 2.0 * half {
-                (lo + hi) / 2.0
-            } else {
+        let scale = self.scale;
+        let pad = FIT_PAD * scale / v.zoom;
+        let axis = |centre: f32, lo: f32, hi: f32, room: i32| {
+            if overflows(hi - lo, v.zoom, room, scale) {
+                let half = room as f32 / 2.0 / v.zoom;
                 centre.clamp(lo + half - pad, hi - half + pad)
+            } else {
+                (lo + hi) / 2.0
             }
         };
         v.center = Point::new(
-            axis(v.center.x, c.left, c.right, d.area.width() as f32),
-            axis(v.center.y, c.top, c.bottom, d.area.height() as f32),
+            axis(v.center.x, c.left, c.right, d.area.width()),
+            axis(v.center.y, c.top, c.bottom, d.area.height()),
         );
     }
 
@@ -319,11 +320,10 @@ impl Document {
         }
     }
 
-    /// The mouse wheel turned by `notches` (positive away from the user)
-    /// with the pointer at `p`. Over the capture it steps the size, unless
-    /// the window has something to scroll. In the window, Ctrl zooms about
-    /// the pointer, and otherwise it scrolls, sideways when `sideways`
-    /// (Shift, or a sideways wheel).
+    /// The wheel turned `notches` (positive away from the user) at `p`.
+    /// Over the capture it steps the size unless the window has something
+    /// to scroll. In the window Ctrl zooms about the pointer; otherwise it
+    /// scrolls, sideways when `sideways` (Shift, or a sideways wheel).
     pub fn wheel(&mut self, p: Point, notches: f32, sideways: bool, ctrl: bool) -> bool {
         let Some(v) = self.view else {
             return !ctrl && !sideways && !self.on_chrome(p) && self.wheel_size(notches);
@@ -351,16 +351,14 @@ impl Document {
         self.view.is_some_and(|v| v.center != before)
     }
 
-    /// Whether the capture, at this zoom, is bigger than the window's area,
-    /// so the wheel scrolls it.
+    /// Whether the capture overflows the window's area, so it scrolls.
     fn scrolls(&self) -> bool {
         let (Some(d), Some(v)) = (self.dock(), self.view) else {
             return false;
         };
         let c = self.shown_rect();
-        let pad = 2.0 * FIT_PAD * self.scale;
-        (c.width() * v.zoom + pad) > d.area.width() as f32
-            || (c.height() * v.zoom + pad) > d.area.height() as f32
+        overflows(c.width(), v.zoom, d.area.width(), self.scale)
+            || overflows(c.height(), v.zoom, d.area.height(), self.scale)
     }
 
     /// The top row: the zoom pill and Copy, then the window buttons at the
@@ -765,6 +763,12 @@ impl Document {
         let stride = pixmap.row_bytes();
         (pixmap.bytes().expect("raster pixmaps have bytes"), stride)
     }
+}
+
+/// Whether `len` image pixels at `zoom`, with the fit padding each side,
+/// are more than `room` window pixels.
+fn overflows(len: f32, zoom: f32, room: i32, scale: f32) -> bool {
+    len * zoom + 2.0 * FIT_PAD * scale > room as f32
 }
 
 fn panel_image(p: &Panel) -> Option<Image> {
