@@ -426,10 +426,7 @@ impl Document {
         if !self.also.is_empty() {
             return self.shared_style();
         }
-        if let Some(m) = self
-            .selected
-            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()))
-            .and_then(|i| self.marks.get(i))
+        if let Some(m) = self.styled_mark().and_then(|i| self.marks.get(i))
             && let Some(s) = self.style_of_mark(m)
         {
             let row = row_of(m).unwrap_or(Row::Full);
@@ -472,6 +469,13 @@ impl Document {
             });
         }
         Some((style?, row?))
+    }
+
+    /// The one mark the style row shows and changes: the selected one, or
+    /// else the one just drawn unless a label is being typed.
+    fn styled_mark(&self) -> Option<usize> {
+        self.selected
+            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()))
     }
 
     /// The mark just drawn, while it's still the current tool's and
@@ -625,10 +629,7 @@ impl Document {
             return false;
         }
         // New marks of the same kind follow the last pick too.
-        let target = self
-            .selected
-            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()));
-        let remember = if let Some(i) = target.filter(|&i| i < self.marks.len()) {
+        let remember = if let Some(i) = self.styled_mark().filter(|&i| i < self.marks.len()) {
             if checkpoint {
                 self.checkpoint();
             }
@@ -726,10 +727,7 @@ impl Document {
         if !self.also.is_empty() {
             return None;
         }
-        let target = self
-            .selected
-            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()));
-        let tool = match target.and_then(|i| self.marks.get(i)) {
+        let tool = match self.styled_mark().and_then(|i| self.marks.get(i)) {
             Some(m) => tool_of(m)?,
             None if self.typing.is_some() => Tool::Text,
             None => self.tool,

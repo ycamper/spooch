@@ -1,9 +1,9 @@
 //! The styles as a small JSON file, so the last picks survive a restart:
 //! each tool's style and saved looks, the framing and the pinned one, the
-//! gallery, the recent stickers and the format. Frames are kept by key and stickers by
-//! name, so new built-ins don't shift them; anything unknown or out of
-//! range keeps what it was. The palette isn't kept: `settings.txt` picks
-//! the starting one.
+//! gallery, the recent stickers and the format. Frames are kept by key
+//! and stickers by name, so new built-ins don't shift them; anything
+//! unknown or out of range keeps what it was. The palette isn't kept:
+//! `settings.txt` picks the starting one.
 
 use std::collections::BTreeMap;
 
@@ -86,6 +86,11 @@ impl Style {
     }
 }
 
+/// How the file names `tool`.
+fn tool_key(tool: Tool) -> String {
+    tool.name().to_lowercase()
+}
+
 /// The index (`tool_index`) of the tool called `name`, ignoring case.
 fn tool_named(name: &str) -> Option<usize> {
     Tool::ALL
@@ -100,11 +105,11 @@ impl Styles {
         let file = Remembered {
             tools: Tool::ALL
                 .iter()
-                .map(|t| (t.name().to_lowercase(), self.tools[tool_index(*t)]))
+                .map(|&t| (tool_key(t), self.tools[tool_index(t)]))
                 .collect(),
             quick: Tool::ALL
                 .iter()
-                .map(|t| (t.name().to_lowercase(), self.quick[tool_index(*t)]))
+                .map(|&t| (tool_key(t), self.quick[tool_index(t)]))
                 .filter(|(_, saved)| saved.iter().any(Option::is_some))
                 .map(|(name, saved)| (name, saved.to_vec()))
                 .collect(),
