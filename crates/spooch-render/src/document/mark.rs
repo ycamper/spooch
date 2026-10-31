@@ -1,6 +1,8 @@
 //! The marks themselves: what each kind is, how it draws, where it sits
 //! and how close the pointer is to it.
 
+use std::borrow::Cow;
+
 use super::*;
 
 const WHITE_EDGE: Color4f = Color4f::new(1.0, 1.0, 1.0, 1.0);
@@ -53,27 +55,78 @@ impl Mark {
         scale: f32,
         number: u32,
     ) {
-        if self.look().is_some_and(|l| l.auto_edge) {
-            let edge = self.auto_edge(base, typeface);
-            let mut picked = self.clone();
-            if let Some(l) = picked.look_mut() {
-                (l.edge, l.auto_edge) = (Some(edge), false);
-            }
-            return picked.draw(canvas, base, typeface, scale, number);
-        }
-        // A see-through mark fades as a whole, so its edge and shadow don't
-        // show through its fill.
-        let faded = self.look().is_some_and(|l| l.opacity < 1.0);
-        if faded {
-            let alpha = self.look().map_or(1.0, |l| l.opacity);
+        self.faded(canvas, |c| {
+            self.draw_solid(c, base, typeface, scale, number)
+        });
+    }
+
+    /// `draw`, as pixel art on `grid` when given. Highlights blend with
+    /// what's under them, so they stay smooth.
+    pub(super) fn draw_in(
+        &self,
+        canvas: &Canvas,
+        grid: Option<&Grid>,
+        base: &Base,
+        typeface: Option<&Typeface>,
+        scale: f32,
+        number: u32,
+    ) {
+        let pixel = grid
+            .filter(|_| !matches!(self, Mark::Highlight(_)))
+            .zip(self.reach(typeface));
+        let Some((grid, area)) = pixel else {
+            return self.draw(canvas, base, typeface, scale, number);
+        };
+        let mut ink = self.with_edge_picked(base, typeface).into_owned();
+        let finish = ink.look_mut().map(pixel::finish_of).unwrap_or_default();
+        self.faded(canvas, |c| {
+            grid.draw(c, area, finish, |c| {
+                ink.draw_solid(c, base, typeface, scale, number)
+            })
+        });
+    }
+
+    /// Run `draw` so that a see-through mark fades as a whole, its edge and
+    /// shadow not showing through its fill.
+    fn faded(&self, canvas: &Canvas, draw: impl FnOnce(&Canvas)) {
+        let alpha = self.look().map_or(1.0, |l| l.opacity);
+        if alpha < 1.0 {
             canvas.save_layer_alpha_f(None, alpha);
         }
-        self.turned(canvas, typeface, || {
-            self.draw_opaque(canvas, base, typeface, scale, number)
-        });
-        if faded {
+        draw(canvas);
+        if alpha < 1.0 {
             canvas.restore();
         }
+    }
+
+    /// The mark at full opacity, its auto edge picked and turned as it's
+    /// turned.
+    fn draw_solid(
+        &self,
+        canvas: &Canvas,
+        base: &Base,
+        typeface: Option<&Typeface>,
+        scale: f32,
+        number: u32,
+    ) {
+        let m = self.with_edge_picked(base, typeface);
+        m.turned(canvas, typeface, || {
+            m.draw_opaque(canvas, base, typeface, scale, number)
+        });
+    }
+
+    /// The mark with an auto edge replaced by the colour that reads over
+    /// what's under it.
+    fn with_edge_picked(&self, base: &Base, typeface: Option<&Typeface>) -> Cow<'_, Mark> {
+        if !self.look().is_some_and(|l| l.auto_edge) {
+            return Cow::Borrowed(self);
+        }
+        let edge = self.auto_edge(base, typeface);
+        let mut picked = self.clone();
+        if let Some(l) = picked.look_mut() {
+            (l.edge, l.auto_edge) = (Some(edge), false);
+        }
+        Cow::Owned(picked)
     }
 
     /// Run `draw` with the canvas turned the way the mark is turned.
@@ -406,6 +459,33 @@ impl Mark {
     pub(super) fn spin(&self, typeface: Option<&Typeface>) -> Option<(f32, Point)> {
         let a = self.angle().filter(|a| *a != 0.0)?;
         Some((a, self.pivot(typeface)?))
+    }
+
+    /// Everything the mark draws on, generously: its shape grown by its
+    /// stroke, edge or arrow head, turned as it's turned.
+    pub(super) fn reach(&self, typeface: Option<&Typeface>) -> Option<Rect> {
+        let curve = |from, to, bend| *crate::curve_path(from, to, bend).bounds();
+        let (r, pad) = match self {
+            Mark::Arrow(a) => (curve(a.from, a.to, a.bend), a.width * 3.0),
+            Mark::Line(l) => (curve(l.from, l.to, l.bend), l.width * 2.0),
+            Mark::Stroke(s) => (s.bounds(), s.width * 2.0),
+            Mark::Box(b) => (b.rect.sorted(), b.width * 2.0),
+            Mark::Oval(o) => (o.rect.sorted(), o.width * 2.0),
+            Mark::Step(s) => (self.outline(typeface)?, s.radius * 0.5),
+            Mark::Label(l) => (self.outline(typeface)?, l.size * 0.3),
+            Mark::Sticker(s) => (s.rect.sorted(), 0.0),
+            Mark::Highlight(h) => (h.rect.sorted(), 0.0),
+            Mark::Redact(r, _) => (r.sorted(), 0.0),
+        };
+        let r = r.with_outset((pad, pad));
+        Some(match self.spin(typeface) {
+            Some((a, c)) => {
+                skia_safe::Matrix::rotate_deg_pivot(a.to_degrees(), c)
+                    .map_rect(r)
+                    .0
+            }
+            None => r,
+        })
     }
 
     /// The area the mark covers, roughly: its outline, or for arrows and

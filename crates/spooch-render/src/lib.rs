@@ -13,7 +13,7 @@ mod select;
 mod sticker;
 pub use document::{
     Action, Counts, Cursor, Document, Exported, Format, Frame, Gallery, GalleryAction, Key,
-    KeyOutcome, LoadError, Mods, PALETTES, Palette, Panel, SHARE_SHORTCUT, Style, Styles,
+    KeyOutcome, LoadError, Mode, Mods, PALETTES, Palette, Panel, SHARE_SHORTCUT, Style, Styles,
     SyncBadge, Tool, WindowButton, WindowPart, load_frames, thumbnail,
 };
 pub use select::{OUTSIDE_BRIGHTNESS, nudge_pointer, selecting_loupe, selection_frame};
@@ -43,6 +43,11 @@ pub struct Look {
     /// Pick the edge from what's under the mark: white over dark, black
     /// over light. `edge` is then only a fallback.
     pub auto_edge: bool,
+    /// Whether it casts the soft drop shadow. Pixel art draws without.
+    pub shadow: bool,
+    /// Pixel art's anti-aliasing, 0 to 1: how much of their coverage the
+    /// cells along its edges keep. 0 makes every cell inked or clear.
+    pub smooth: f32,
 }
 
 impl Default for Look {
@@ -52,6 +57,8 @@ impl Default for Look {
             opacity: 1.0,
             edge_width: 1.0,
             auto_edge: false,
+            shadow: true,
+            smooth: 0.0,
         }
     }
 }
@@ -272,7 +279,7 @@ impl Arrow {
             self.color,
             self.look.edge,
             edge,
-            (w * 0.4, w * 0.25),
+            self.look.shadow.then_some((w * 0.4, w * 0.25)),
         );
     }
 }
@@ -285,12 +292,14 @@ fn draw_filled(
     color: Color4f,
     edge: Option<Color4f>,
     edge_width: f32,
-    (blur, drop): (f32, f32),
+    shadow: Option<(f32, f32)>,
 ) {
-    canvas.save();
-    canvas.translate((0.0, drop));
-    canvas.draw_path(path, &shadow_paint(blur));
-    canvas.restore();
+    if let Some((blur, drop)) = shadow {
+        canvas.save();
+        canvas.translate((0.0, drop));
+        canvas.draw_path(path, &shadow_paint(blur));
+        canvas.restore();
+    }
     if let Some(e) = edge {
         let mut outline = stroke(e, edge_width);
         outline.set_stroke_join(PaintJoin::Round);
@@ -823,7 +832,7 @@ impl Label {
                 behind,
                 None,
                 0.0,
-                (s * 0.12, s * 0.06),
+                self.look.shadow.then_some((s * 0.12, s * 0.06)),
             );
         }
         // Text as a path, so outline, shadow and fill line up exactly.
@@ -920,7 +929,7 @@ impl Label {
             self.color,
             self.look.edge,
             edge,
-            (s * 0.08, s * 0.05),
+            self.look.shadow.then_some((s * 0.08, s * 0.05)),
         );
     }
 }
@@ -1122,17 +1131,19 @@ fn stroke_outlined(
         }
         p
     };
-    let mut shadow = shadow_paint(width * 0.4);
-    shadow.set_style(PaintStyle::Stroke);
-    shadow.set_stroke_width(thick + 2.0 * edge);
-    if round {
-        shadow.set_stroke_cap(skia_safe::PaintCap::Round);
-        shadow.set_stroke_join(PaintJoin::Round);
+    if look.shadow {
+        let mut shadow = shadow_paint(width * 0.4);
+        shadow.set_style(PaintStyle::Stroke);
+        shadow.set_stroke_width(thick + 2.0 * edge);
+        if round {
+            shadow.set_stroke_cap(skia_safe::PaintCap::Round);
+            shadow.set_stroke_join(PaintJoin::Round);
+        }
+        canvas.save();
+        canvas.translate((0.0, width * 0.25));
+        canvas.draw_path(path, &shadow);
+        canvas.restore();
     }
-    canvas.save();
-    canvas.translate((0.0, width * 0.25));
-    canvas.draw_path(path, &shadow);
-    canvas.restore();
     if let Some(e) = look.edge {
         canvas.draw_path(path, &paint(e, thick + 2.0 * edge));
     }
@@ -1251,8 +1262,10 @@ impl Step {
     pub fn draw(&self, canvas: &Canvas, typeface: Option<&Typeface>, number: u32) {
         let r = self.radius;
         let edge = (r * 0.12).max(1.5) * self.look.edge_width;
-        let shadow = shadow_paint(r * 0.15);
-        canvas.draw_circle(self.center + Point::new(0.0, r * 0.1), r + edge, &shadow);
+        if self.look.shadow {
+            let shadow = shadow_paint(r * 0.15);
+            canvas.draw_circle(self.center + Point::new(0.0, r * 0.1), r + edge, &shadow);
+        }
         if let Some(e) = self.look.edge {
             let ring = fill(e);
             canvas.draw_circle(self.center, r + edge, &ring);

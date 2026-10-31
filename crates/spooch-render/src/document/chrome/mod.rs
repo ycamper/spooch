@@ -125,6 +125,8 @@ pub(super) struct RowLayout {
     pub edge: Option<IRect>,
     /// The edge thickness slider's track.
     pub outline: Option<IRect>,
+    /// The anti-aliasing slider's track, in pixel mode.
+    pub smooth: Option<IRect>,
     /// The font button, for text.
     pub font: Option<IRect>,
     /// The recently picked stickers, and the button for all of them.
@@ -165,6 +167,7 @@ impl RowLayout {
             (Hit::Slider(Slider::Opacity), self.opacity),
             (Hit::Edge, self.edge),
             (Hit::Slider(Slider::Outline), self.outline),
+            (Hit::Slider(Slider::Smooth), self.smooth),
             (Hit::Font, self.font),
             (Hit::StickerMore, self.more),
         ];
@@ -314,9 +317,13 @@ impl Document {
             rest.push(slider_w);
         }
         let has_font = has_looks && self.shows_font();
+        let has_smooth = has_looks && self.mode() == super::Mode::Pixel;
         if has_looks {
             rest.push(slider_w);
             rest.push(SIZE_BUTTON);
+            rest.push(slider_w);
+        }
+        if has_smooth {
             rest.push(slider_w);
         }
         if has_font {
@@ -429,6 +436,7 @@ impl Document {
             r
         });
         let outline = has_looks.then(|| track(&mut left));
+        let smooth = has_smooth.then(|| track(&mut left));
         let font = has_font.then(|| {
             let r = square(left, FONT_BUTTON);
             left += (FONT_BUTTON + GROUP_GAP) * s;
@@ -450,6 +458,7 @@ impl Document {
             opacity,
             edge,
             outline,
+            smooth,
             font,
             stickers,
             more,

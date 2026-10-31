@@ -59,6 +59,7 @@ impl Document {
             // A step being placed gets the next number.
             let next_step = numbers.iter().max().copied().unwrap_or(0) + 1;
             let backdrop = self.backdrop();
+            let grid = self.grid();
             let origin = Point::new(self.canvas.left as f32, self.canvas.top as f32);
             let px = self.ui_px();
             let canvas = self.surface.canvas();
@@ -86,7 +87,14 @@ impl Document {
             for &i in &order {
                 let m = &self.marks[i];
                 if !matches!(m, Mark::Redact(..)) {
-                    m.draw(canvas, &self.base, tf, self.scale, numbers[i]);
+                    m.draw_in(
+                        canvas,
+                        grid.as_ref(),
+                        &self.base,
+                        tf,
+                        self.scale,
+                        numbers[i],
+                    );
                 }
             }
             if let Some(HoverMark::Mark(i)) = self.hover_mark
@@ -116,14 +124,20 @@ impl Document {
                 if l.look.auto_edge {
                     l.look.edge = Some(Mark::Label(l.clone()).auto_edge(&self.base, Some(tf)));
                 }
-                let turned = l.angle != 0.0;
-                if turned {
-                    canvas.save();
-                    canvas.rotate(l.angle.to_degrees(), Some(l.pivot(tf)));
-                }
-                l.draw(canvas, tf, Some(self.caret));
-                if turned {
-                    canvas.restore();
+                let area = Mark::Label(l.clone()).reach(Some(tf));
+                let finish = grid
+                    .as_ref()
+                    .map(|_| pixel::finish_of(&mut l.look))
+                    .unwrap_or_default();
+                let typed = |c: &Canvas| {
+                    c.save();
+                    c.rotate(l.angle.to_degrees(), Some(l.pivot(tf)));
+                    l.draw(c, tf, Some(self.caret));
+                    c.restore();
+                };
+                match (&grid, area) {
+                    (Some(grid), Some(area)) => grid.draw(canvas, area, finish, typed),
+                    _ => typed(canvas),
                 }
             }
             // While turning, the angle beside the handle.
@@ -142,7 +156,7 @@ impl Document {
                 draw_badge(canvas, ui, &format!("{deg}\u{b0}"), handle, px);
             }
             if let Some(m) = preview {
-                m.draw(canvas, &self.base, tf, self.scale, next_step);
+                m.draw_in(canvas, grid.as_ref(), &self.base, tf, self.scale, next_step);
             }
             guides::draw_guides(canvas, &self.guides, px);
             canvas.restore();

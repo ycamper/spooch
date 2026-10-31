@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::frame::{FRAME_COLOURS, Frame, SHADOWS};
 use super::style::{
-    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES, Style,
-    Styles, tool_index,
+    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES,
+    SMOOTH_STEPS, Style, Styles, tool_index,
 };
 use super::{Format, Tool};
 use crate::{HighlightLook, LabelFont, Plate, STICKERS};
@@ -30,6 +30,8 @@ struct Remembered {
     /// "Use for every capture".
     pinned: Option<FramingFile>,
     gallery: Option<bool>,
+    /// "clean" or "pixel".
+    mode: Option<String>,
     /// Names, newest first.
     stickers: Vec<String>,
     /// "png" or "jpg".
@@ -82,6 +84,7 @@ impl Style {
             && (MIN_OPACITY..=100).contains(&self.opacity)
             && usize::from(self.font) < LabelFont::ALL.len()
             && usize::from(self.edge_width) < EDGE_WIDTHS.len()
+            && self.smooth <= SMOOTH_STEPS
             && usize::from(self.variant) < HighlightLook::ALL.len().max(Plate::ALL.len())
     }
 }
@@ -116,6 +119,7 @@ impl Styles {
             framing: self.framing.into(),
             pinned: self.pinned.map(FramingFile::from),
             gallery: Some(self.gallery),
+            mode: Some(self.mode.key().to_string()),
             stickers: self
                 .stickers
                 .iter()
@@ -155,6 +159,9 @@ impl Styles {
         self.pinned = file.pinned.as_ref().and_then(FramingFile::framing);
         if let Some(g) = file.gallery {
             self.gallery = g;
+        }
+        if let Some(m) = file.mode.as_deref().and_then(super::Mode::from_key) {
+            self.mode = m;
         }
         // The file's stickers first (newest first), then today's, with no
         // repeats, up to `RECENT_STICKERS`.
@@ -202,6 +209,7 @@ mod tests {
         styles.pinned = Some(styles.framing);
         styles.quick[t][1] = Some(styles.tools[t]);
         styles.gallery = false;
+        styles.mode = super::super::Mode::Pixel;
         styles.stickers[0] = STICKERS.len() as u8 - 1;
         let json = styles.remembered(Format::Jpeg);
         let (back, format) = Styles::default().with_remembered(&json).unwrap();

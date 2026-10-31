@@ -8,7 +8,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use skia_safe::{IRect, Point, Rect, image::CachingHint};
 
-use super::{Document, Format, Frame, Mark, Redaction, Tool};
+use super::{Document, Format, Frame, Mark, Mode, Redaction, Tool};
 use crate::{
     Arrow, Boxed, Highlight, HighlightLook, Label, LabelFont, Line, Look, Oval, Plate, Step, Stroke,
 };
@@ -54,6 +54,9 @@ struct File {
     /// The drop shadow; older files have Auto.
     #[serde(default, skip_serializing_if = "is_zero")]
     shadow: u8,
+    /// "pixel"; none for clean, as older files and unknown modes read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
     #[serde(deserialize_with = "known_marks")]
     marks: Vec<SavedMark>,
 }
@@ -68,8 +71,8 @@ fn known_marks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<SavedMark>,
         .collect())
 }
 
-fn is_zero(n: &u8) -> bool {
-    *n == 0
+fn is_zero<T: Default + PartialEq>(n: &T) -> bool {
+    *n == T::default()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,6 +204,9 @@ struct SavedLook {
     /// The edge follows the background; `edge` is its fallback.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     auto_edge: bool,
+    /// Pixel art's anti-aliasing; older files have none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    smooth: f32,
 }
 
 impl From<Look> for SavedLook {
@@ -210,6 +216,7 @@ impl From<Look> for SavedLook {
             opacity: l.opacity,
             edge_width: l.edge_width,
             auto_edge: l.auto_edge,
+            smooth: l.smooth,
         }
     }
 }
@@ -217,10 +224,12 @@ impl From<Look> for SavedLook {
 impl From<SavedLook> for Look {
     fn from(l: SavedLook) -> Self {
         Look {
+            shadow: true,
             edge: l.edge.map(color),
             opacity: l.opacity.clamp(0.0, 1.0),
             edge_width: l.edge_width.clamp(0.1, 10.0),
             auto_edge: l.auto_edge,
+            smooth: l.smooth.clamp(0.0, 1.0),
         }
     }
 }
@@ -556,6 +565,7 @@ impl Document {
             frame_colour: self.frame_colour(),
             frame_title: self.frame_title().to_string(),
             shadow: self.shadow(),
+            mode: (self.mode() != Mode::Clean).then(|| self.mode().key().to_string()),
             marks: self.marks.iter().map(SavedMark::from).collect(),
         }
     }
@@ -611,6 +621,12 @@ impl Document {
         doc.set_frame(Frame::from_key(&file.frame).unwrap_or_default());
         doc.set_frame_colour(file.frame_colour);
         doc.set_shadow(file.shadow);
+        doc.set_mode(
+            file.mode
+                .as_deref()
+                .and_then(Mode::from_key)
+                .unwrap_or_default(),
+        );
         if !file.frame_title.is_empty() {
             doc.set_frame_title(&file.frame_title);
         }

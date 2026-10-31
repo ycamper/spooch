@@ -145,6 +145,52 @@ fn saved_looks_keep_and_bring_back_a_style() {
 }
 
 #[test]
+fn pixel_mode_draws_whole_cells_and_switches_back() {
+    let mut d = doc();
+    d.set_tool(Tool::Arrow);
+    assert!(drag(&mut d, (20.0, 80.0), (180.0, 20.0)));
+    let clean = d.export();
+    d.set_mode(Mode::Pixel);
+    let pixel = d.export();
+    assert_ne!(pixel, clean);
+    // Every 3x3 cell, on the grid from the capture's corner, is one colour.
+    let whole_cells = |out: &[u8]| {
+        let at = |x: usize, y: usize| &out[(y * 200 + x) * 4..][..4];
+        for (cx, cy) in (0..66).flat_map(|x| (0..33).map(move |y| (x, y))) {
+            let first = at(cx * 3, cy * 3);
+            for (dx, dy) in (0..3).flat_map(|x| (0..3).map(move |y| (x, y))) {
+                assert_eq!(at(cx * 3 + dx, cy * 3 + dy), first, "cell {cx},{cy}");
+            }
+        }
+    };
+    whole_cells(&pixel);
+    // Saved with the capture, and lossless back to clean.
+    let (w, h, px) = d.base_pixels();
+    let (back, _) = Document::from_saved(&d.to_json("x"), w, h, &px).unwrap();
+    assert_eq!(back.mode(), Mode::Pixel);
+    d.set_mode(Mode::Clean);
+    assert_eq!(d.export(), clean);
+    // The outline slider widens the outline: more dark cells.
+    d.set_mode(Mode::Pixel);
+    let dark = |out: &[u8]| out.as_chunks::<4>().0.iter().filter(|p| p[1] < 60).count();
+    let thin = dark(&pixel);
+    assert!(d.set_edge_width(4));
+    assert!(dark(&d.export()) > thin + 100, "outline didn't widen");
+    // Anti-aliasing keeps whole cells, in more shades along the edges.
+    let shades = |out: &[u8]| {
+        let mut all: Vec<&[u8; 4]> = out.as_chunks::<4>().0.iter().collect();
+        all.sort();
+        all.dedup();
+        all.len()
+    };
+    let hard = shades(&d.export());
+    assert!(d.slide(super::style::Slider::Smooth, 1.0));
+    let smooth = d.export();
+    whole_cells(&smooth);
+    assert!(shades(&smooth) > hard + 10, "no anti-aliasing");
+}
+
+#[test]
 fn text_editing_and_undo() {
     let mut d = doc();
     d.begin_text(Point::new(20.0, 50.0));

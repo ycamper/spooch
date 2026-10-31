@@ -96,6 +96,9 @@ pub const EDGE_WIDTHS: [f32; 5] = [0.5, 1.0, 1.5, 2.0, 3.0];
 /// The standard edge thickness.
 const STANDARD_EDGE: u8 = 1;
 
+/// Pixel art's anti-aliasing runs from 0 (none) to this many steps.
+pub const SMOOTH_STEPS: u8 = 4;
+
 /// Opacity runs from this up to 100%, in 5% steps.
 pub const MIN_OPACITY: u8 = 10;
 const OPACITY_STEP: u8 = 5;
@@ -118,6 +121,8 @@ pub struct Style {
     /// `Plate::ALL` for labels.
     #[serde(alias = "highlight")]
     pub variant: u8,
+    /// Pixel art's anti-aliasing step, 0 to `SMOOTH_STEPS`.
+    pub smooth: u8,
 }
 
 impl Default for Style {
@@ -130,6 +135,7 @@ impl Default for Style {
             font: 0,
             edge_width: STANDARD_EDGE,
             variant: 0,
+            smooth: 0,
         }
     }
 }
@@ -187,6 +193,8 @@ pub struct Styles {
     pub(super) pinned: Option<Framing>,
     /// Each tool's saved looks, by `tool_index`.
     pub(super) quick: [[Option<Style>; QUICK_STYLES]; Tool::ALL.len()],
+    /// How the marks are drawn.
+    pub(super) mode: super::Mode,
 }
 
 /// What goes round the output.
@@ -212,6 +220,7 @@ impl Default for Styles {
                 .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
             pinned: None,
             quick: [[None; QUICK_STYLES]; Tool::ALL.len()],
+            mode: super::Mode::default(),
         }
     }
 }
@@ -359,10 +368,11 @@ impl Document {
     }
 
     /// For a reopened capture: the picks carried from other captures, but
-    /// its own frame, frame colour and shadow.
+    /// its own framing and mode.
     pub fn carry_styles(&mut self, styles: Styles) {
         self.set_styles(Styles {
             framing: self.styles.framing,
+            mode: self.styles.mode,
             ..styles
         });
     }
@@ -408,10 +418,12 @@ impl Document {
             _ => None,
         };
         Look {
+            shadow: true,
             edge,
             opacity: f32::from(style.opacity.clamp(MIN_OPACITY, 100)) / 100.0,
             edge_width: EDGE_WIDTHS[usize::from(style.edge_width).min(EDGE_WIDTHS.len() - 1)],
             auto_edge: style.edge == EDGE_AUTO,
+            smooth: f32::from(style.smooth.min(SMOOTH_STEPS)) / f32::from(SMOOTH_STEPS),
         }
     }
 
@@ -500,6 +512,7 @@ impl Document {
                 font: 0,
                 edge_width: nearest_edge_width(look.edge_width),
                 variant: 0,
+                smooth: (look.smooth.clamp(0.0, 1.0) * f32::from(SMOOTH_STEPS)).round() as u8,
             }
         };
         Some(match m {
@@ -927,12 +940,15 @@ impl Document {
                 let o = opacity_percent((f32::from(MIN_OPACITY) + t * range) / 100.0);
                 self.apply_style(|s| s.opacity = o, false)
             }
-            Slider::Opacity => false,
             Slider::Outline if self.has_looks() => {
                 let step = (t * (EDGE_WIDTHS.len() - 1) as f32).round() as u8;
                 self.apply_style(|s| s.edge_width = step, false)
             }
-            Slider::Outline => false,
+            Slider::Smooth if self.has_looks() => {
+                let step = (t * f32::from(SMOOTH_STEPS)).round() as u8;
+                self.apply_style(|s| s.smooth = step, false)
+            }
+            Slider::Opacity | Slider::Outline | Slider::Smooth => false,
         }
     }
 
@@ -947,6 +963,7 @@ impl Document {
                 f32::from(style.opacity.saturating_sub(MIN_OPACITY)) / f32::from(100 - MIN_OPACITY)
             }
             Slider::Outline => f32::from(style.edge_width) / (EDGE_WIDTHS.len() - 1) as f32,
+            Slider::Smooth => f32::from(style.smooth) / f32::from(SMOOTH_STEPS),
         }
     }
 }
@@ -958,6 +975,8 @@ pub(super) enum Slider {
     Opacity,
     /// Edge thickness.
     Outline,
+    /// Pixel art's anti-aliasing.
+    Smooth,
 }
 
 #[cfg(test)]
