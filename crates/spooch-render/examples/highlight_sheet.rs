@@ -39,7 +39,7 @@ fn main() {
         .expect("a document");
         d.set_tool(Tool::Highlight);
         for _ in 0..i % HighlightLook::ALL.len() {
-            d.cycle_highlight();
+            d.cycle_look();
         }
         // From the right, clear of the canvas edge's crop handle.
         drag(&mut d, (366.0, 162.0), (36.0, 128.0));

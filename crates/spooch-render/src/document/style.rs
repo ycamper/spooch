@@ -7,7 +7,7 @@ use skia_safe::{Color4f, Point};
 use super::frame::Frame;
 use super::theme::hex;
 use super::{Document, Mark, Redaction, Tool};
-use crate::{HighlightLook, LabelFont, Look, STICKERS};
+use crate::{HighlightLook, LabelFont, Look, Plate, STICKERS};
 
 /// Eight mark colours on Shift+1 to Shift+8, balanced in OKLCH. Every
 /// preset keeps the same slots: red first, yellow third, white last.
@@ -114,8 +114,10 @@ pub struct Style {
     pub font: u8,
     /// Edge thickness step, into `EDGE_WIDTHS`.
     pub edge_width: u8,
-    /// Index into `HighlightLook::ALL`, for highlights.
-    pub highlight: u8,
+    /// The tool's own look: into `HighlightLook::ALL` for highlights,
+    /// `Plate::ALL` for labels.
+    #[serde(alias = "highlight")]
+    pub variant: u8,
 }
 
 impl Default for Style {
@@ -127,14 +129,24 @@ impl Default for Style {
             opacity: 100,
             font: 0,
             edge_width: STANDARD_EDGE,
-            highlight: 0,
+            variant: 0,
         }
     }
 }
 
 /// The highlight look a style picks.
 pub(super) fn highlight_of(style: Style) -> HighlightLook {
-    HighlightLook::ALL[usize::from(style.highlight) % HighlightLook::ALL.len()]
+    HighlightLook::ALL[usize::from(style.variant) % HighlightLook::ALL.len()]
+}
+
+/// The plate a style puts labels on.
+pub(super) fn plate_of(style: Style) -> Plate {
+    Plate::ALL[usize::from(style.variant) % Plate::ALL.len()]
+}
+
+/// Where `x` is in `all`, as a style index.
+fn index_in<T: PartialEq>(all: &[T], x: &T) -> u8 {
+    all.iter().position(|a| a == x).unwrap_or(0) as u8
 }
 
 /// Which controls the style row shows.
@@ -497,7 +509,7 @@ impl Document {
                 opacity,
                 font: 0,
                 edge_width: nearest_edge_width(look.edge_width),
-                highlight: 0,
+                variant: 0,
             }
         };
         Some(match m {
@@ -507,10 +519,8 @@ impl Document {
             Mark::Oval(o) => full(o.color, nearest_size(o.width, &WIDTHS, s), &o.look),
             Mark::Stroke(p) => full(p.color, nearest_size(p.width, &WIDTHS, s), &p.look),
             Mark::Label(l) => Style {
-                font: LabelFont::ALL
-                    .iter()
-                    .position(|f| *f == l.font)
-                    .unwrap_or(0) as u8,
+                font: index_in(&LabelFont::ALL, &l.font),
+                variant: index_in(&Plate::ALL, &l.plate),
                 ..full(l.color, nearest_size(l.size, &TEXT, s), &l.look)
             },
             Mark::Step(p) => full(
@@ -520,10 +530,7 @@ impl Document {
             ),
             Mark::Highlight(h) => Style {
                 color: nearest_colour(&self.palette().colours, h.color),
-                highlight: HighlightLook::ALL
-                    .iter()
-                    .position(|l| *l == h.look)
-                    .unwrap_or(0) as u8,
+                variant: index_in(&HighlightLook::ALL, &h.look),
                 ..Style::default()
             },
             Mark::Redact(_, Redaction::Blur(level) | Redaction::Pixelate(level)) => Style {
@@ -573,6 +580,7 @@ impl Document {
                 // The same curve at the new size.
                 l.bend *= l.size / t;
                 (l.color, l.size, l.look, l.font) = (c, t, look, font_of(style));
+                l.plate = plate_of(style);
             }
             Mark::Step(p) => (p.color, p.radius, p.look) = (c, t * STEP_RADIUS, look),
             Mark::Redact(_, Redaction::Blur(level) | Redaction::Pixelate(level)) => {
@@ -771,8 +779,20 @@ impl Document {
         changed
     }
 
+    /// How many looks the look button steps through: highlight looks for
+    /// highlights, plates for labels, `None` for anything else.
+    pub(super) fn looks(&self) -> Option<usize> {
+        if self.shows_highlight() {
+            Some(HighlightLook::ALL.len())
+        } else if self.shows_font() {
+            Some(Plate::ALL.len())
+        } else {
+            None
+        }
+    }
+
     /// Whether the style row is about highlights: the highlighter, or only
-    /// highlights selected. It then shows the look button.
+    /// highlights selected.
     pub(super) fn shows_highlight(&self) -> bool {
         if self.typing.is_some() {
             return false;
@@ -786,13 +806,13 @@ impl Document {
             .all(|&i| matches!(self.marks.get(i), Some(Mark::Highlight(_))))
     }
 
-    /// The next highlight look, round and round.
-    pub fn cycle_highlight(&mut self) -> bool {
-        if !self.shows_highlight() {
+    /// The next highlight look or plate, round and round.
+    pub fn cycle_look(&mut self) -> bool {
+        let Some(n) = self.looks() else {
             return false;
-        }
-        let n = HighlightLook::ALL.len() as u8;
-        self.change_style(|s| s.highlight = (s.highlight + 1) % n)
+        };
+        let n = n as u8;
+        self.change_style(|s| s.variant = (s.variant + 1) % n)
     }
 
     /// Whether the style row is about text: the Text tool, a label being

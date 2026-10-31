@@ -9,13 +9,13 @@ use skia_safe::{
 };
 
 use super::*;
-use crate::Arrow;
 use crate::document::bar::BarLayout;
-use crate::document::style::{PALETTES, SIZES};
+use crate::document::style::{self, PALETTES, SIZES};
 use crate::document::theme::{
     ACTIVE, FIELD, HOVER, ICON, PANEL, PANEL_EDGE, TEXT, WHITE, centred_baseline, chevron,
     draw_list, fill_rrect, rounded_panel,
 };
+use crate::{Arrow, HighlightLook};
 
 impl Document {
     /// The loupe on `at`, from the document's pixels (black off them), with
@@ -293,10 +293,10 @@ impl Document {
                     canvas.draw_circle(at, r, &dot);
                 }
             }
-            // The highlight look: a little picture of it.
+            // The highlight look or plate: a little picture of it.
             if let (Some(b), Some(st)) = (&layout.look, style) {
                 let rect = local(b);
-                if self.hovered == Some(Hit::HighlightLook) {
+                if self.hovered == Some(Hit::Look) {
                     let p = fill(HOVER);
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 6.0 * s, 6.0 * s), &p);
                 }
@@ -306,38 +306,10 @@ impl Document {
                     18.0 * s,
                     12.0 * s,
                 );
-                let look = crate::document::style::highlight_of(st);
-                if look == crate::HighlightLook::Spotlight {
-                    canvas.draw_rrect(
-                        RRect::new_rect_xy(icon.with_outset((2.0 * s, 2.0 * s)), 3.0 * s, 3.0 * s),
-                        &fill(Color4f::new(0.0, 0.0, 0.0, 0.55)),
-                    );
-                    canvas.draw_rrect(
-                        RRect::new_rect_xy(icon.with_inset((3.0 * s, 2.5 * s)), 2.0 * s, 2.0 * s),
-                        &fill(WHITE),
-                    );
-                }
-                crate::Highlight {
-                    rect: if look == crate::HighlightLook::Spotlight {
-                        icon.with_inset((3.0 * s, 2.5 * s))
-                    } else {
-                        icon
-                    },
-                    color: colour,
-                    look,
-                }
-                .draw(canvas);
-                if look != crate::HighlightLook::Spotlight {
-                    // A line of "text" under it.
-                    canvas.draw_rect(
-                        Rect::from_xywh(
-                            icon.left + 3.0 * s,
-                            icon.center_y() - s,
-                            12.0 * s,
-                            2.0 * s,
-                        ),
-                        &fill(ICON),
-                    );
+                if self.shows_highlight() {
+                    highlight_icon(canvas, icon, style::highlight_of(st), colour, s);
+                } else {
+                    plate_icon(canvas, icon, style::plate_of(st), colour, s);
                 }
             }
             if let (Some(last), true) = (
@@ -623,12 +595,20 @@ impl Document {
             Hit::Sticker(i) => crate::sticker::sticker_title(self.recent_stickers()[i]),
             Hit::StickerMore => "All stickers".to_string(),
             Hit::StickerOption(i) => crate::sticker::sticker_title(crate::STICKERS.get(i)?.0),
-            Hit::HighlightLook => {
+            Hit::Look => {
                 let (style, _) = self.shown_style()?;
-                let look = crate::document::style::highlight_of(style);
-                let next = crate::HighlightLook::ALL
-                    [(usize::from(style.highlight) + 1) % crate::HighlightLook::ALL.len()];
-                format!("{}   click for {}", look.name(), next.name())
+                let next = Style {
+                    variant: style.variant.wrapping_add(1),
+                    ..style
+                };
+                let name = |st| {
+                    if self.shows_highlight() {
+                        style::highlight_of(st).name()
+                    } else {
+                        style::plate_of(st).name()
+                    }
+                };
+                format!("{}   click for {}", name(style), name(next))
             }
             Hit::Slider(slider) => {
                 let (style, _) = self.shown_style()?;
@@ -748,7 +728,7 @@ impl Document {
             | Hit::Sticker(_)
             | Hit::StickerMore
             | Hit::Palette
-            | Hit::HighlightLook
+            | Hit::Look
             | Hit::Slider(_)
             | Hit::Edge
             | Hit::Font => {
@@ -770,6 +750,57 @@ impl Document {
             let baseline = centred_baseline(&font, h as f32 / 2.0);
             canvas.draw_str(&text, (8.0 * s, baseline), &font, &fg);
         }))
+    }
+}
+
+/// The look button's picture of highlight look `look` in `colour`.
+fn highlight_icon(canvas: &Canvas, icon: Rect, look: HighlightLook, colour: Color4f, s: f32) {
+    let spotlight = look == HighlightLook::Spotlight;
+    if spotlight {
+        canvas.draw_rrect(
+            RRect::new_rect_xy(icon.with_outset((2.0 * s, 2.0 * s)), 3.0 * s, 3.0 * s),
+            &fill(Color4f::new(0.0, 0.0, 0.0, 0.55)),
+        );
+        canvas.draw_rrect(
+            RRect::new_rect_xy(icon.with_inset((3.0 * s, 2.5 * s)), 2.0 * s, 2.0 * s),
+            &fill(WHITE),
+        );
+    }
+    crate::Highlight {
+        rect: if spotlight {
+            icon.with_inset((3.0 * s, 2.5 * s))
+        } else {
+            icon
+        },
+        color: colour,
+        look,
+    }
+    .draw(canvas);
+    if !spotlight {
+        // A line of "text" under it.
+        let line = Rect::from_xywh(icon.left + 3.0 * s, icon.center_y() - s, 12.0 * s, 2.0 * s);
+        canvas.draw_rect(line, &fill(ICON));
+    }
+}
+
+/// The look button's picture of `plate` for labels in `colour`: a line of
+/// "text" on it.
+fn plate_icon(canvas: &Canvas, icon: Rect, plate: crate::Plate, colour: Color4f, s: f32) {
+    let line = Rect::from_xywh(
+        icon.left + 4.0 * s,
+        icon.center_y() - 1.5 * s,
+        10.0 * s,
+        3.0 * s,
+    );
+    match plate.colours(colour) {
+        Some((behind, on)) => {
+            canvas.draw_rrect(RRect::new_rect_xy(icon, 3.0 * s, 3.0 * s), &fill(behind));
+            canvas.draw_rect(line, &fill(on));
+        }
+        None => {
+            canvas.draw_rect(line.with_outset((s, s)), &fill(WHITE));
+            canvas.draw_rect(line, &fill(colour));
+        }
     }
 }
 

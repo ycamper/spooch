@@ -10,7 +10,7 @@ use skia_safe::{IRect, Point, Rect, image::CachingHint};
 
 use super::{Document, Format, Frame, Mark, Redaction, Tool};
 use crate::{
-    Arrow, Boxed, Highlight, HighlightLook, Label, LabelFont, Line, Look, Oval, Step, Stroke,
+    Arrow, Boxed, Highlight, HighlightLook, Label, LabelFont, Line, Look, Oval, Plate, Step, Stroke,
 };
 
 /// Bumped when the file layout changes in a way older code can't read.
@@ -156,6 +156,10 @@ enum SavedMark {
         /// Older files have none; they were straight.
         #[serde(default, skip_serializing_if = "is_upright")]
         bend: f32,
+        /// "bubble", "tag" or "badge"; none for outlined text, as older
+        /// files and names this version doesn't know read.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plate: Option<String>,
     },
     Pen {
         points: Vec<Xy>,
@@ -327,6 +331,7 @@ impl From<&Mark> for SavedMark {
                 angle: l.angle,
                 font: (l.font != LabelFont::Rounded).then(|| l.font.key().to_string()),
                 bend: l.bend,
+                plate: (l.plate != Plate::Outlined).then(|| l.plate.key().to_string()),
             },
             Mark::Stroke(s) => SavedMark::Pen {
                 points: s.points.iter().map(|p| xy(*p)).collect(),
@@ -449,6 +454,7 @@ impl TryFrom<SavedMark> for Mark {
                 angle,
                 font,
                 bend,
+                plate,
             } => Mark::Label(Label {
                 origin: point(origin),
                 text,
@@ -461,6 +467,10 @@ impl TryFrom<SavedMark> for Mark {
                     .and_then(LabelFont::from_key)
                     .unwrap_or_default(),
                 bend: if bend.is_finite() { bend } else { 0.0 },
+                plate: plate
+                    .as_deref()
+                    .and_then(Plate::from_key)
+                    .unwrap_or_default(),
             }),
             SavedMark::Pen {
                 points,

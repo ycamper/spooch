@@ -79,6 +79,7 @@ fn bend(d: &mut Document, face: &skia_safe::Typeface, at: (f32, f32), text: &str
         angle: 0.0,
         font: Default::default(),
         bend: 0.0,
+        plate: Default::default(),
     };
     d.set_tool(Tool::Arrow);
     let middle = l.middle(face);
