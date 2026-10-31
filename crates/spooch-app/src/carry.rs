@@ -86,7 +86,7 @@ impl Carry {
 
     /// Keep what `s` has picked for the next capture.
     pub fn remember(&mut self, s: &Session) {
-        self.styles = s.doc.styles();
+        self.styles = s.doc.styles().for_next_capture();
         self.format = s.doc.format();
         self.keep_picks();
     }

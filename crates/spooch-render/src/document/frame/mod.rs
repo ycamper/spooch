@@ -181,6 +181,22 @@ impl Document {
         self.chrome_key = None;
     }
 
+    /// Whether every capture starts with this frame, colour and shadow.
+    pub(crate) fn look_pinned(&self) -> bool {
+        self.styles.pinned == Some(self.styles.look())
+    }
+
+    /// Make this frame, colour and shadow what every capture starts with,
+    /// or, if they already are, go back to starting with the last.
+    pub(crate) fn toggle_pin(&mut self) {
+        self.styles.pinned = if self.look_pinned() {
+            None
+        } else {
+            Some(self.styles.look())
+        };
+        self.chrome_key = None;
+    }
+
     /// What frame colour `index` looks like on the frame in use: its own
     /// colour for Default.
     pub(super) fn frame_colour_shown(&self, index: u8) -> Color4f {
@@ -501,10 +517,11 @@ mod tests {
                 .find(|(i, ..)| *i == which)
                 .map(|(_, r, _)| Rect::from(r).center())
         };
-        // The Frame button opens a list of every frame; a row picks one.
+        // The Frame button opens a list of every frame, then the pin; a row
+        // picks one.
         d.begin_drag(item(&d, BarItem::Frame).unwrap());
         let (_, _, rows) = d.bar_menu_layout(&d.bar_layout()).expect("open");
-        assert_eq!(rows.len(), Frame::all().len());
+        assert_eq!(rows.len(), Frame::all().len() + 1);
         d.begin_drag(Rect::from(rows[6]).center());
         assert_eq!(d.frame(), Frame::all()[6].0);
         assert!(d.bar_menu_layout(&d.bar_layout()).is_none(), "closed");

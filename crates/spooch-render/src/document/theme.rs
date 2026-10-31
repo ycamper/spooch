@@ -120,6 +120,27 @@ pub(crate) fn swatch(canvas: &Canvas, c: Point, radius: f32, colour: Color4f, sc
     canvas.draw_circle(c, radius, &stroke(MUTED, scale));
 }
 
+/// A small tick box centred on `c`, ticked when `on`.
+pub(crate) fn tick_box(canvas: &Canvas, c: Point, on: bool, scale: f32) {
+    let s = scale;
+    let r = Rect::from_xywh(c.x - 6.0 * s, c.y - 6.0 * s, 12.0 * s, 12.0 * s);
+    if on {
+        fill_rrect(canvas, r, 3.0 * s, ACCENT);
+        let mut p = stroke(WHITE, 1.75 * s);
+        p.set_stroke_cap(PaintCap::Round);
+        let (a, b, d) = (
+            Point::new(c.x - 3.0 * s, c.y),
+            Point::new(c.x - 0.75 * s, c.y + 2.5 * s),
+            Point::new(c.x + 3.5 * s, c.y - 2.5 * s),
+        );
+        canvas.draw_line(a, b, &p);
+        canvas.draw_line(b, d, &p);
+    } else {
+        let edge = RRect::new_rect_xy(r.with_inset((0.5 * s, 0.5 * s)), 3.0 * s, 3.0 * s);
+        canvas.draw_rrect(edge, &stroke(MUTED, s));
+    }
+}
+
 /// A dropdown list's panel: its rows (`rows`, in the panel's own
 /// coordinates once `origin` is taken off), the one in use marked and the
 /// hovered one lit, each then drawn by `row` with its rectangle and
