@@ -150,6 +150,9 @@ pub enum Row {
 /// How many recently picked stickers the style row shows.
 pub const RECENT_STICKERS: usize = 10;
 
+/// How many saved looks each tool has, as chips at the end of the row.
+pub const QUICK_STYLES: usize = 3;
+
 /// The stickers the row starts with, before any are picked.
 const FIRST_STICKERS: [&str; RECENT_STICKERS] = [
     "thumbs_up",
@@ -182,6 +185,8 @@ pub struct Styles {
     /// The look every capture starts with ("Use for every capture" in the
     /// Frame menu). Without one, each capture starts with the last.
     pub(super) pinned: Option<Framing>,
+    /// Each tool's saved looks, by `tool_index`.
+    pub(super) quick: [[Option<Style>; QUICK_STYLES]; Tool::ALL.len()],
 }
 
 /// What goes round the output.
@@ -206,6 +211,7 @@ impl Default for Styles {
             stickers: FIRST_STICKERS
                 .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
             pinned: None,
+            quick: [[None; QUICK_STYLES]; Tool::ALL.len()],
         }
     }
 }
@@ -712,6 +718,47 @@ impl Document {
             self.chrome_key = None;
         }
         changed
+    }
+
+    /// The tool whose saved looks the row shows: the one the row is about,
+    /// if it has colours or sizes. `None` with several marks selected.
+    pub(super) fn quick_tool(&self) -> Option<Tool> {
+        if !self.also.is_empty() {
+            return None;
+        }
+        let target = self
+            .selected
+            .or_else(|| self.just_drawn().filter(|_| self.typing.is_none()));
+        let tool = match target.and_then(|i| self.marks.get(i)) {
+            Some(m) => tool_of(m)?,
+            None if self.typing.is_some() => Tool::Text,
+            None => self.tool,
+        };
+        matches!(tool.row(), Some(Row::Full | Row::Colours | Row::Strength)).then_some(tool)
+    }
+
+    /// The saved looks the row shows.
+    pub(super) fn quick_styles(&self) -> Option<[Option<Style>; QUICK_STYLES]> {
+        self.quick_tool().map(|t| self.styles.quick[tool_index(t)])
+    }
+
+    /// A click on saved look `i`: use it, or keep the current look there
+    /// when it's empty or Shift is held.
+    pub(super) fn press_quick(&mut self, i: usize) -> bool {
+        let (Some(tool), Some((current, _))) = (self.quick_tool(), self.shown_style()) else {
+            return false;
+        };
+        let Some(slot) = self.styles.quick[tool_index(tool)].get_mut(i) else {
+            return false;
+        };
+        match *slot {
+            Some(saved) if !self.shift => self.change_style(|s| *s = saved),
+            _ => {
+                *slot = Some(current);
+                self.chrome_key = None;
+                true
+            }
+        }
     }
 
     /// The sticker the tool stamps: the one picked last.

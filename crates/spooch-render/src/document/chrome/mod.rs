@@ -63,6 +63,8 @@ const STICKER_BUTTON: f32 = 26.0;
 const STICKER_GAP: f32 = 3.0;
 const STICKER_CELL: f32 = 40.0;
 const STICKER_COLUMNS: usize = 9;
+/// Between the saved looks.
+const QUICK_GAP: f32 = 4.0;
 /// The move tab on the canvas's bottom edge.
 const TAB_W: f32 = 40.0;
 const TAB_H: f32 = 12.0;
@@ -78,6 +80,8 @@ pub(super) enum Hit {
     Palette,
     /// The look button: highlight looks, or label plates.
     Look,
+    /// A saved look at the end of the row.
+    Quick(usize),
     Slider(Slider),
     Edge,
     /// The label font button.
@@ -125,6 +129,8 @@ pub(super) struct RowLayout {
     pub font: Option<IRect>,
     /// The recently picked stickers, and the button for all of them.
     pub stickers: Vec<IRect>,
+    /// The saved looks, last on the row.
+    pub quick: Vec<IRect>,
     pub more: Option<IRect>,
     /// Whether the size slider is strength.
     pub strength: bool,
@@ -144,6 +150,12 @@ impl RowLayout {
                     .iter()
                     .enumerate()
                     .map(|(i, r)| (Hit::Sticker(i), *r)),
+            )
+            .chain(
+                self.quick
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| (Hit::Quick(i), *r)),
             )
             .collect();
         let optional = [
@@ -310,6 +322,11 @@ impl Document {
         if has_font {
             rest.push(FONT_BUTTON);
         }
+        let has_quick = self.quick_tool().is_some();
+        let n = super::style::QUICK_STYLES as f32;
+        if has_quick {
+            rest.push(n * SIZE_BUTTON + (n - 1.0) * QUICK_GAP);
+        }
         let stickers_w = if has_stickers {
             let n = super::style::RECENT_STICKERS as f32;
             n * STICKER_BUTTON + (n - 1.0) * STICKER_GAP + SEPARATOR_GAP + SIZE_BUTTON
@@ -412,7 +429,18 @@ impl Document {
             r
         });
         let outline = has_looks.then(|| track(&mut left));
-        let font = has_font.then(|| square(left, FONT_BUTTON));
+        let font = has_font.then(|| {
+            let r = square(left, FONT_BUTTON);
+            left += (FONT_BUTTON + GROUP_GAP) * s;
+            r
+        });
+        let mut quick = Vec::new();
+        if has_quick {
+            for _ in 0..super::style::QUICK_STYLES {
+                quick.push(square(left, SIZE_BUTTON));
+                left += (SIZE_BUTTON + QUICK_GAP) * s;
+            }
+        }
         Some(RowLayout {
             rect,
             colours,
@@ -425,6 +453,7 @@ impl Document {
             font,
             stickers,
             more,
+            quick,
             strength: row == Row::Strength,
         })
     }
@@ -716,6 +745,9 @@ impl Document {
             }
             Some(Hit::Palette) => {
                 self.cycle_palette();
+            }
+            Some(Hit::Quick(i)) => {
+                self.press_quick(i);
             }
             Some(Hit::Look) => {
                 self.cycle_look();
