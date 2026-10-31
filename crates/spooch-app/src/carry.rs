@@ -1,6 +1,9 @@
 //! What carries on from one capture to the next: the styles and format
 //! last picked, where captures are kept, sharing and syncing.
 
+use std::path::PathBuf;
+use std::sync::Mutex;
+
 use spooch_platform::log;
 use spooch_platform::recents::Recents;
 use spooch_platform::save::LocalTime;
@@ -19,6 +22,9 @@ pub struct Carry {
     pub recents: Option<Recents>,
     pub sharing: Sharing,
     pub sync: Syncing,
+    /// Where the picks are kept between runs, and what was last written
+    /// there.
+    kept_in: Option<(PathBuf, String)>,
 }
 
 impl Carry {
@@ -32,7 +38,16 @@ impl Carry {
             recents,
             sharing,
             sync,
+            kept_in: None,
         }
+    }
+
+    /// Start from `format`, and keep the picks in `path` whenever they
+    /// change, so they survive a restart.
+    pub fn keeping_picks_in(mut self, path: PathBuf, format: Format) -> Carry {
+        self.format = format;
+        self.kept_in = Some((path, self.styles.remembered(format)));
+        self
     }
 
     /// Switch syncing on or off, and keep that in the settings.
@@ -73,6 +88,38 @@ impl Carry {
     pub fn remember(&mut self, s: &Session) {
         self.styles = s.doc.styles();
         self.format = s.doc.format();
+        self.keep_picks();
+    }
+
+    /// Write the picks out if they changed, on a thread so closing never
+    /// waits on the disk.
+    fn keep_picks(&mut self) {
+        let Some((path, written)) = &mut self.kept_in else {
+            return;
+        };
+        let json = self.styles.remembered(self.format);
+        if *written == json {
+            return;
+        }
+        written.clone_from(&json);
+        // Writers take the newest picks, one at a time, so a slow write
+        // can't land after a newer one.
+        static NEWEST: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
+        static WRITING: Mutex<()> = Mutex::new(());
+        *NEWEST.lock().unwrap_or_else(|e| e.into_inner()) = Some((path.clone(), json));
+        std::thread::spawn(|| {
+            let _one = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+            let Some((path, json)) = NEWEST.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+                return;
+            };
+            let tmp = path.with_extension("json.tmp");
+            if let Err(e) = std::fs::write(&tmp, &json).and_then(|_| std::fs::rename(&tmp, &path)) {
+                log::line(format!(
+                    "could not keep the picks in {}: {e}",
+                    path.display()
+                ));
+            }
+        });
     }
 
     /// `s` is closing: remember its picks and keep it in Recents in the

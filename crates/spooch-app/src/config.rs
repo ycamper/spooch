@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use spooch_platform::log;
 use spooch_platform::settings::{self, Settings};
-use spooch_render::Styles;
+use spooch_render::{Format, Styles};
 
 /// The settings folder.
 #[derive(Clone, Debug)]
@@ -18,10 +18,12 @@ pub struct Config {
 }
 
 /// Settings as read, the styles they set, and anything wrong with them or
-/// with the custom frames, already logged.
+/// with the custom frames, already logged. At startup, also the picks and
+/// format kept from the last run.
 pub struct Loaded {
     pub settings: Settings,
     pub styles: Styles,
+    pub format: Format,
     pub problems: Vec<String>,
 }
 
@@ -39,6 +41,11 @@ impl Config {
         self.dir.join("frames")
     }
 
+    /// The last picks (`Styles::remembered`), kept between runs.
+    pub fn styles_path(&self) -> PathBuf {
+        self.dir.join("styles.json")
+    }
+
     /// A file Spooch leaves itself to remember something, like having
     /// shown the welcome.
     pub fn marker(&self, name: &str) -> PathBuf {
@@ -52,12 +59,24 @@ impl Config {
         Ok(self.apply(settings, problems, styles))
     }
 
-    /// `load` at startup: the defaults when the file can't be read.
+    /// `load` at startup: the defaults when the file can't be read, and
+    /// the picks kept from the last run on top.
     pub fn load_or_default(&self, styles: Styles) -> Loaded {
-        self.load(styles).unwrap_or_else(|e| {
+        let mut loaded = self.load(styles).unwrap_or_else(|e| {
             log::line(format!("could not read settings, using defaults: {e}"));
             self.apply(Settings::default(), Vec::new(), styles)
-        })
+        });
+        let path = self.styles_path();
+        if let Ok(json) = std::fs::read_to_string(&path) {
+            match loaded.styles.with_remembered(&json) {
+                Ok((styles, format)) => {
+                    loaded.styles = styles;
+                    loaded.format = format.unwrap_or_default();
+                }
+                Err(e) => log::line(format!("could not read {}: {e}", path.display())),
+            }
+        }
+        loaded
     }
 
     fn apply(&self, settings: Settings, mut problems: Vec<String>, styles: Styles) -> Loaded {
@@ -70,6 +89,7 @@ impl Config {
         Loaded {
             settings,
             styles,
+            format: Format::default(),
             problems,
         }
     }
@@ -159,6 +179,28 @@ mod tests {
         std::fs::create_dir_all(config.frames_dir()).unwrap();
         std::fs::write(config.frames_dir().join("mine.toml"), "").unwrap();
         assert_ne!(stamp(&config.settings_path(), &config.frames_dir()), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn startup_brings_back_the_last_picks() {
+        let dir = std::env::temp_dir().join(format!("spooch-picks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = Config::new(dir.clone());
+        let fresh = config.load_or_default(Styles::default());
+        assert_eq!(fresh.format, Format::Png);
+        let json = r#"{"tools": {"box": {"color": 4, "size": 4}}, "format": "jpg"}"#;
+        std::fs::write(config.styles_path(), json).unwrap();
+        let loaded = config.load_or_default(Styles::default());
+        assert_eq!(loaded.format, Format::Jpeg);
+        assert_ne!(loaded.styles, fresh.styles);
+        // A broken file is logged and ignored.
+        std::fs::write(config.styles_path(), "{").unwrap();
+        assert_eq!(
+            config.load_or_default(Styles::default()).styles,
+            fresh.styles
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

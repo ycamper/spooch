@@ -378,7 +378,10 @@ pub fn run() -> Result<(), String> {
     let recents = args.recents(
         std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Spooch").join("Recents")),
     );
-    carry(|c| *c = Carry::new(loaded.styles, recents.clone(), &loaded.settings));
+    carry(|c| {
+        *c = Carry::new(loaded.styles, recents.clone(), &loaded.settings)
+            .keeping_picks_in(config.styles_path(), loaded.format)
+    });
     let mut shell = Shell {
         owner,
         settings: loaded.settings,
