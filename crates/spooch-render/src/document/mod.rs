@@ -368,6 +368,10 @@ pub struct Document {
     /// More selected marks, added with Shift+click. `selected` is the one
     /// the style row and handles follow.
     also: Vec<usize>,
+    /// Index into `marks` of the mark just drawn or typed. Until the next
+    /// press on the canvas, the style row shows it and restyles it, as if
+    /// it were selected but without handles in the way of the next drag.
+    last_drawn: Option<usize>,
     tool: Tool,
     format: Format,
     /// What the bar's Share button says while a share is under way or
@@ -494,6 +498,7 @@ impl Document {
             redo: Vec::new(),
             selected: None,
             also: Vec::new(),
+            last_drawn: None,
             tool: Tool::Arrow,
             format: Format::Png,
             share_label: None,
@@ -768,6 +773,7 @@ impl Document {
     /// so the rail and the style row match what's selected.
     fn select(&mut self, i: Option<usize>) {
         self.also.clear();
+        self.last_drawn = None;
         self.selected = i.filter(|&i| i < self.marks.len());
         if let Some(i) = self.selected {
             self.tool = style::mark_tool(&self.marks[i]);

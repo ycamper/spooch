@@ -128,6 +128,7 @@ impl Document {
         }
         let p = self.to_doc(p);
         self.pointer = p;
+        self.last_drawn = None;
         // A press on the label being typed moves the caret (Shift extends
         // the selection), and dragging selects.
         if let (Some(l), Some(tf)) = (&self.typing, &self.typeface) {
@@ -322,6 +323,7 @@ impl Document {
                     Some(m) => {
                         self.checkpoint();
                         self.marks.push(m);
+                        self.last_drawn = Some(self.marks.len() - 1);
                         true
                     }
                     None => {

@@ -191,6 +191,7 @@ impl Document {
             return;
         };
         self.marks.remove(i);
+        self.last_drawn = None;
         self.deselect();
         self.tool = Tool::Text;
         let index = match (at, &self.typeface) {
@@ -219,6 +220,7 @@ impl Document {
             let i = i.min(self.marks.len());
             if label == original {
                 self.marks.insert(i, Mark::Label(label));
+                self.last_drawn = Some(i);
                 return false;
             }
             let mut before = self.state();
@@ -229,6 +231,7 @@ impl Document {
                 return false;
             }
             self.marks.insert(i, Mark::Label(label));
+            self.last_drawn = Some(i);
             return true;
         }
         if label.text.trim().is_empty() {
@@ -236,6 +239,7 @@ impl Document {
         }
         self.checkpoint();
         self.marks.push(Mark::Label(label));
+        self.last_drawn = Some(self.marks.len() - 1);
         true
     }
 }

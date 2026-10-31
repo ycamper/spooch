@@ -18,6 +18,7 @@ impl Document {
         self.marks = s.marks;
         self.canvas = s.canvas;
         self.deselect();
+        self.last_drawn = None;
         self.fresh = false;
     }
 
@@ -60,6 +61,7 @@ impl Document {
     pub(super) fn add_selected(&mut self, marks: Vec<Mark>) {
         let first = self.marks.len();
         self.marks.extend(marks);
+        self.last_drawn = None;
         self.selected = Some(first);
         self.also = (first + 1..self.marks.len()).collect();
         self.fresh = false;
