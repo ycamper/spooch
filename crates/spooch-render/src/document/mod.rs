@@ -20,6 +20,7 @@ mod grips;
 mod guides;
 mod keys;
 mod mark;
+mod pixel;
 mod pointer;
 mod remembered;
 mod render;
@@ -36,6 +37,7 @@ pub(crate) use chrome::panel;
 pub use frame::{Exported, FRAME_COLOURS, Frame, SHADOWS, load_frames};
 pub use gallery::{Gallery, GalleryAction, SyncBadge, thumbnail};
 pub use keys::{Key, KeyOutcome, Mods, SHARE_SHORTCUT};
+pub use pixel::Mode;
 pub use saved::LoadError;
 pub use style::{PALETTE, PALETTES, Palette, Style, Styles};
 pub(crate) use theme::{SELECTION, fill, hex, ink_baseline, stroke, with_alpha};
@@ -46,6 +48,7 @@ use grips::{
     rotate_stick,
 };
 use mark::{Base, Mark, Redaction, contains};
+use pixel::Grid;
 use pointer::{Gesture, HoverMark};
 
 use skia_safe::{

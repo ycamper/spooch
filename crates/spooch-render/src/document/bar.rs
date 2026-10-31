@@ -5,18 +5,20 @@
 use crate::document::fill;
 use skia_safe::{Font, IRect, Paint, Point, RRect, Rect};
 
-use super::Document;
 use super::chrome::{Panel, contains, panel};
 use super::theme::{
     BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron, draw_list, ellipsize,
     rounded_panel, swatch, tick_box,
 };
+use super::{Document, Mode};
 
 /// Something on the bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarItem {
     Name,
     Format,
+    /// How the marks are drawn: clean or pixel art.
+    Mode,
     /// The frame round the output.
     Frame,
     /// The drop shadow round the output.
@@ -96,6 +98,7 @@ impl BarItem {
             self,
             BarItem::Format
                 | BarItem::Frame
+                | BarItem::Mode
                 | BarItem::Shadow
                 | BarItem::FrameColour
                 | BarItem::FrameTitle
@@ -110,6 +113,7 @@ impl BarItem {
         match self {
             BarItem::Format => "Click to switch between PNG and JPEG",
             BarItem::Frame => "Click to pick a frame; hold Alt to preview",
+            BarItem::Mode => "Click to switch between clean and pixel-art marks",
             BarItem::Shadow => "Click to change the shadow; hold Alt to preview",
             BarItem::FrameColour => "Click to pick the frame's colour",
             BarItem::FrameTitle => "Click to type the frame's title; Enter when done",
@@ -178,6 +182,7 @@ impl Document {
                 format!("{}.{}", self.name, self.format.extension()),
             ),
             (BarItem::Format, self.format.name().to_string()),
+            (BarItem::Mode, self.mode().name().to_string()),
             (BarItem::Frame, self.frame().name().to_string()),
             (BarItem::FrameColour, String::new()),
             (
@@ -228,7 +233,7 @@ impl Document {
                     BarItem::FrameTitle => (t + 20.0 * s).clamp(70.0 * s, 220.0 * s),
                     BarItem::Name => (t + 20.0 * s).max(160.0 * s),
                     BarItem::Size => t + 12.0 * s,
-                    BarItem::Shadow => t + 20.0 * s,
+                    BarItem::Shadow | BarItem::Mode => t + 20.0 * s,
                     _ => t + 22.0 * s,
                 }
             })
@@ -435,6 +440,7 @@ impl Document {
             }
             BarItem::Frame => self.toggle_menu(BarMenu::Frame),
             BarItem::Shadow => self.set_shadow(self.shadow() + 1),
+            BarItem::Mode => self.set_mode(Mode::nth(self.mode().index() + 1)),
             BarItem::FrameColour => self.toggle_menu(BarMenu::Colour),
             BarItem::FrameTitle => self.set_editing_title(!self.editing_title()),
             BarItem::Window => self.action = Some(Action::OpenWindow),
@@ -539,21 +545,25 @@ mod tests {
         d.set_name("Spooch 2026-10-04 at 10.30.00");
         let b = d.bar_layout();
         assert!(b.rect.top >= 200 + 8, "{:?}", b.rect);
-        assert_eq!(b.items.len(), 9, "no frame colour without a window frame");
-        let (_, _, name) = &b.items[0];
-        assert_eq!(name, "Spooch 2026-10-04 at 10.30.00.png");
-        let (_, _, frame) = &b.items[2];
-        assert_eq!(frame, "No frame");
-        let (_, _, shadow) = &b.items[3];
-        assert_eq!(shadow, "Auto shadow");
-        let (_, _, size) = &b.items[4];
-        assert_eq!(size, "200 \u{00d7} 100");
-        // A window frame adds its colour swatch.
+        assert_eq!(b.items.len(), 10, "no frame colour without a window frame");
+        let texts: Vec<&str> = b.items.iter().map(|(_, _, t)| t.as_str()).collect();
+        assert_eq!(
+            texts[..6],
+            [
+                "Spooch 2026-10-04 at 10.30.00.png",
+                "PNG",
+                "Clean",
+                "No frame",
+                "Auto shadow",
+                "200 \u{00d7} 100",
+            ]
+        );
+        // A window frame adds its colour swatch and title after it.
         d.set_frame(super::super::Frame::builtin("terminal-modern"));
         let b = d.bar_layout();
-        assert_eq!(b.items.len(), 11, "plus its colour and title");
-        assert_eq!(b.items[3].0, BarItem::FrameColour);
-        assert_eq!(b.items[4].0, BarItem::FrameTitle);
+        assert_eq!(b.items.len(), 12, "plus its colour and title");
+        assert_eq!(b.items[4].0, BarItem::FrameColour);
+        assert_eq!(b.items[5].0, BarItem::FrameTitle);
         // The panels: rail, style row, bar, tab.
         assert_eq!(d.chrome().len(), 4);
     }

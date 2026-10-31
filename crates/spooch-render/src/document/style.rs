@@ -187,6 +187,8 @@ pub struct Styles {
     pub(super) pinned: Option<Framing>,
     /// Each tool's saved looks, by `tool_index`.
     pub(super) quick: [[Option<Style>; QUICK_STYLES]; Tool::ALL.len()],
+    /// How the marks are drawn.
+    pub(super) mode: super::Mode,
 }
 
 /// What goes round the output.
@@ -212,6 +214,7 @@ impl Default for Styles {
                 .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
             pinned: None,
             quick: [[None; QUICK_STYLES]; Tool::ALL.len()],
+            mode: super::Mode::default(),
         }
     }
 }
@@ -359,10 +362,11 @@ impl Document {
     }
 
     /// For a reopened capture: the picks carried from other captures, but
-    /// its own frame, frame colour and shadow.
+    /// its own framing and mode.
     pub fn carry_styles(&mut self, styles: Styles) {
         self.set_styles(Styles {
             framing: self.styles.framing,
+            mode: self.styles.mode,
             ..styles
         });
     }
@@ -408,6 +412,7 @@ impl Document {
             _ => None,
         };
         Look {
+            shadow: true,
             edge,
             opacity: f32::from(style.opacity.clamp(MIN_OPACITY, 100)) / 100.0,
             edge_width: EDGE_WIDTHS[usize::from(style.edge_width).min(EDGE_WIDTHS.len() - 1)],

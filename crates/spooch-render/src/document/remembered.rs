@@ -30,6 +30,8 @@ struct Remembered {
     /// "Use for every capture".
     pinned: Option<FramingFile>,
     gallery: Option<bool>,
+    /// "clean" or "pixel".
+    mode: Option<String>,
     /// Names, newest first.
     stickers: Vec<String>,
     /// "png" or "jpg".
@@ -116,6 +118,7 @@ impl Styles {
             framing: self.framing.into(),
             pinned: self.pinned.map(FramingFile::from),
             gallery: Some(self.gallery),
+            mode: Some(self.mode.key().to_string()),
             stickers: self
                 .stickers
                 .iter()
@@ -155,6 +158,9 @@ impl Styles {
         self.pinned = file.pinned.as_ref().and_then(FramingFile::framing);
         if let Some(g) = file.gallery {
             self.gallery = g;
+        }
+        if let Some(m) = file.mode.as_deref().and_then(super::Mode::from_key) {
+            self.mode = m;
         }
         // The file's stickers first (newest first), then today's, with no
         // repeats, up to `RECENT_STICKERS`.
@@ -202,6 +208,7 @@ mod tests {
         styles.pinned = Some(styles.framing);
         styles.quick[t][1] = Some(styles.tools[t]);
         styles.gallery = false;
+        styles.mode = super::super::Mode::Pixel;
         styles.stickers[0] = STICKERS.len() as u8 - 1;
         let json = styles.remembered(Format::Jpeg);
         let (back, format) = Styles::default().with_remembered(&json).unwrap();
