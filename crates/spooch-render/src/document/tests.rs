@@ -429,6 +429,40 @@ pub(super) fn placed() -> (Document, Vec<u8>) {
 }
 
 #[test]
+fn the_wheel_sizes_and_space_moves_the_shape_being_drawn() {
+    let (mut d, _) = placed();
+    d.set_tool(Tool::Box);
+    let at = Point::new(200.0, 150.0);
+    let before = d.tool_style().size;
+    // A touchpad's half notches add up to one step.
+    assert!(!d.wheel(at, 0.5, false, false));
+    assert!(d.wheel(at, 0.5, false, false));
+    assert_eq!(d.tool_style().size, before + 1);
+    assert!(d.wheel(at, -1.0, false, false));
+    assert_eq!(d.tool_style().size, before);
+    // Junk from a shell changes nothing and doesn't stick.
+    assert!(!d.wheel(at, f32::NAN, false, false));
+    assert!(!d.wheel(at, f32::INFINITY, false, false));
+    assert!(d.wheel(at, -1.0, false, false));
+    assert!(d.wheel(at, -1.0e9, false, false));
+    assert_eq!(d.tool_style().size, 0);
+    assert!(d.wheel(at, 2.0, false, false));
+    assert_eq!(d.tool_style().size, before);
+    // Mid-draw the wheel sizes the box being drawn, and Space moves it.
+    d.begin_drag(Point::new(120.0, 120.0));
+    d.drag_to(Point::new(150.0, 150.0));
+    assert!(d.wheel(at, 1.0, false, false));
+    let space = d.key(Key::Char(' '), Mods::default());
+    assert_eq!(space, KeyOutcome::Handled { changed: false });
+    d.drag_to(Point::new(170.0, 160.0));
+    d.key_up(Key::Char(' '));
+    d.drag_to(Point::new(200.0, 190.0));
+    assert!(d.end_drag());
+    assert_eq!(box_rect(&d, 0), Rect::from_ltrb(140.0, 130.0, 200.0, 190.0));
+    assert_eq!(d.shown_style().unwrap().0.size, before + 1);
+}
+
+#[test]
 fn edges_crop_and_extend_over_the_desktop() {
     let (mut d, desktop) = placed();
     assert_eq!(d.canvas(), IRect::from_ltrb(100, 100, 300, 200));

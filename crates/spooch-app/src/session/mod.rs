@@ -320,9 +320,7 @@ impl Session {
         }
     }
 
-    /// The mouse wheel, in the editor window: `notches` away from the
-    /// user, at `p`. Ctrl zooms about the pointer; otherwise it scrolls,
-    /// sideways when `sideways`.
+    /// The mouse wheel, as `Document::wheel` takes it.
     pub fn wheel(&mut self, p: Point, notches: f32, sideways: bool, ctrl: bool) -> Response {
         Response {
             repaint: self.doc.wheel(p, notches, sideways, ctrl),
@@ -437,6 +435,11 @@ impl Session {
             r.repaint = true;
         }
         r
+    }
+
+    /// A key was let go.
+    pub fn key_up(&mut self, key: Key) {
+        self.doc.key_up(key);
     }
 
     /// A key, as `Document::key` takes it, plus the session's own: Ctrl+V

@@ -163,3 +163,17 @@ pub fn mods(state: KeyButMask) -> Mods {
         alt: state.contains(KeyButMask::MOD1),
     }
 }
+
+/// Wheel button `button` (4 and 5 up and down, 6 and 7 tilts) as
+/// `Session::wheel` takes it: notches away from the user or to the right,
+/// and whether it's sideways (a tilt, or Shift held).
+pub fn wheel(button: u8, state: KeyButMask) -> Option<(f32, bool)> {
+    let (notches, tilt) = match button {
+        4 => (1.0, false),
+        5 => (-1.0, false),
+        6 => (1.0, true),
+        7 => (-1.0, true),
+        _ => return None,
+    };
+    Some((notches, tilt || state.contains(KeyButMask::SHIFT)))
+}

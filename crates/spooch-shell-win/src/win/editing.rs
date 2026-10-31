@@ -24,7 +24,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, IDC_ARROW, IDC_CROSS, IDC_HAND, IDC_IBEAM, IDC_SIZEALL, IDC_SIZENESW,
-    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, PostMessageW, SM_CXDRAG, SM_CYDRAG,
+    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, PostMessageW, SM_CXDRAG, SM_CYDRAG, WM_MOUSEHWHEEL,
 };
 use windows::core::PCWSTR;
 
@@ -103,6 +103,32 @@ pub(super) fn drag_slop() -> (f32, f32) {
             GetSystemMetrics(SM_CXDRAG) as f32,
             GetSystemMetrics(SM_CYDRAG) as f32,
         )
+    }
+}
+
+/// A WM_MOUSEWHEEL or WM_MOUSEHWHEEL, as `Session::wheel` takes it.
+pub(super) struct Wheel {
+    /// Away from the user, or for a tilt, to the right.
+    pub notches: f32,
+    /// A tilt, or Shift held.
+    pub sideways: bool,
+    pub ctrl: bool,
+}
+
+impl Wheel {
+    pub(super) fn from(msg: u32, wparam: WPARAM) -> Wheel {
+        const NOTCH: f32 = 120.0;
+        const MK_SHIFT: usize = 0x0004;
+        const MK_CONTROL: usize = 0x0008;
+        let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32 / NOTCH;
+        let keys = wparam.0 & 0xFFFF;
+        let tilt = msg == WM_MOUSEHWHEEL;
+        Wheel {
+            // A tilt to the right scrolls right.
+            notches: if tilt { -delta } else { delta },
+            sideways: tilt || keys & MK_SHIFT != 0,
+            ctrl: keys & MK_CONTROL != 0,
+        }
     }
 }
 

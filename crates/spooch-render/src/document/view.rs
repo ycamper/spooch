@@ -254,18 +254,19 @@ impl Document {
         if dragging {
             return;
         }
-        let pad = FIT_PAD * self.scale / v.zoom;
-        let axis = |centre: f32, lo: f32, hi: f32, room: f32| {
-            let half = room / 2.0 / v.zoom;
-            if hi - lo + 2.0 * pad <= 2.0 * half {
-                (lo + hi) / 2.0
-            } else {
+        let scale = self.scale;
+        let pad = FIT_PAD * scale / v.zoom;
+        let axis = |centre: f32, lo: f32, hi: f32, room: i32| {
+            if overflows(hi - lo, v.zoom, room, scale) {
+                let half = room as f32 / 2.0 / v.zoom;
                 centre.clamp(lo + half - pad, hi - half + pad)
+            } else {
+                (lo + hi) / 2.0
             }
         };
         v.center = Point::new(
-            axis(v.center.x, c.left, c.right, d.area.width() as f32),
-            axis(v.center.y, c.top, c.bottom, d.area.height() as f32),
+            axis(v.center.x, c.left, c.right, d.area.width()),
+            axis(v.center.y, c.top, c.bottom, d.area.height()),
         );
     }
 
@@ -319,18 +320,23 @@ impl Document {
         }
     }
 
-    /// The mouse wheel turned by `notches` (positive away from the user)
-    /// with the pointer at `p`: with Ctrl it zooms about the pointer,
-    /// otherwise it scrolls, sideways when `sideways` (Shift, or a
-    /// sideways wheel).
+    /// The wheel turned `notches` (positive away from the user) at `p`.
+    /// Over the capture it steps the size unless the window has something
+    /// to scroll. In the window Ctrl zooms about the pointer; otherwise it
+    /// scrolls, sideways when `sideways` (Shift, or a sideways wheel).
     pub fn wheel(&mut self, p: Point, notches: f32, sideways: bool, ctrl: bool) -> bool {
-        let Some(v) = self.view else { return false };
+        let Some(v) = self.view else {
+            return !ctrl && !sideways && !self.on_chrome(p) && self.wheel_size(notches);
+        };
         if let Some(moved) = self.gallery_wheel(p, notches) {
             return moved;
         }
         if ctrl {
             let z = v.zoom * 1.15f32.powf(notches);
             return self.zoom_to(z, Some(p));
+        }
+        if !sideways && !self.on_chrome(p) && !self.scrolls() {
+            return self.wheel_size(notches);
         }
         let by = notches * WHEEL_STEP * self.scale / v.zoom;
         let before = v.center;
@@ -343,6 +349,16 @@ impl Document {
         }
         self.settle();
         self.view.is_some_and(|v| v.center != before)
+    }
+
+    /// Whether the capture overflows the window's area, so it scrolls.
+    fn scrolls(&self) -> bool {
+        let (Some(d), Some(v)) = (self.dock(), self.view) else {
+            return false;
+        };
+        let c = self.shown_rect();
+        overflows(c.width(), v.zoom, d.area.width(), self.scale)
+            || overflows(c.height(), v.zoom, d.area.height(), self.scale)
     }
 
     /// The top row: the zoom pill and Copy, then the window buttons at the
@@ -749,6 +765,12 @@ impl Document {
     }
 }
 
+/// Whether `len` image pixels at `zoom`, with the fit padding each side,
+/// are more than `room` window pixels.
+fn overflows(len: f32, zoom: f32, room: i32, scale: f32) -> bool {
+    len * zoom + 2.0 * FIT_PAD * scale > room as f32
+}
+
 fn panel_image(p: &Panel) -> Option<Image> {
     let (w, h) = (p.rect.width(), p.rect.height());
     if w <= 0 || h <= 0 || p.pixels.len() < (w * h * 4) as usize {
@@ -806,6 +828,22 @@ mod tests {
         assert_eq!(d.zoom(), 1.25);
         assert!(d.zoom_fit());
         assert!(d.view.unwrap().fit);
+    }
+
+    #[test]
+    fn the_wheel_sizes_until_there_is_something_to_scroll() {
+        let (mut d, _) = placed();
+        d.set_window_size(1200, 900);
+        let at = d.to_screen(Point::new(180.0, 140.0));
+        let before = d.tool_style().size;
+        assert!(d.wheel(at, 1.0, false, false));
+        assert_eq!(d.tool_style().size, before + 1);
+        // Zoomed past the window, it scrolls instead.
+        d.set_window_size(400, 300);
+        let at = d.to_screen(Point::new(180.0, 140.0));
+        assert!(d.wheel(at, 6.0, false, true));
+        assert!(d.wheel(at, -1.0, false, false));
+        assert_eq!(d.tool_style().size, before + 1);
     }
 
     #[test]

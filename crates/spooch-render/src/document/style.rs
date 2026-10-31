@@ -254,6 +254,15 @@ impl Palette {
     }
 }
 
+/// Size step `size` one up (`bigger`) or down, stopping at the ends.
+fn stepped(size: u8, bigger: bool) -> u8 {
+    if bigger {
+        (size + 1).min(SIZES as u8 - 1)
+    } else {
+        size.saturating_sub(1)
+    }
+}
+
 pub(super) fn tool_index(tool: Tool) -> usize {
     Tool::ALL.iter().position(|t| *t == tool).unwrap_or(0)
 }
@@ -696,13 +705,42 @@ impl Document {
 
     /// One size or strength step up (`[`/`]`), stopping at the ends.
     pub(crate) fn step_size(&mut self, bigger: bool) -> bool {
-        self.change_style(|s| {
-            s.size = if bigger {
-                (s.size + 1).min(SIZES as u8 - 1)
-            } else {
-                s.size.saturating_sub(1)
-            }
-        })
+        self.change_style(|s| s.size = stepped(s.size, bigger))
+    }
+
+    /// The wheel turned `notches` over the capture: each whole notch steps
+    /// the size as `[` and `]` do, or mid-draw the size of the shape being
+    /// drawn.
+    pub(super) fn wheel_size(&mut self, notches: f32) -> bool {
+        if !notches.is_finite() {
+            return false;
+        }
+        // Turning back starts afresh; more steps than there are sizes
+        // change nothing more.
+        if self.wheel_rest * notches < 0.0 {
+            self.wheel_rest = 0.0;
+        }
+        let most = SIZES as f32;
+        self.wheel_rest = (self.wheel_rest + notches).clamp(-most, most);
+        let mut changed = false;
+        while self.wheel_rest.abs() >= 1.0 {
+            let bigger = self.wheel_rest > 0.0;
+            self.wheel_rest -= self.wheel_rest.signum();
+            changed |= match self.drawing() {
+                Some(tool) if tool.row().is_some() => {
+                    let s = &mut self.styles.tools[tool_index(tool)];
+                    let before = s.size;
+                    s.size = stepped(s.size, bigger);
+                    s.size != before
+                }
+                Some(_) => false,
+                None => self.step_size(bigger),
+            };
+        }
+        if changed {
+            self.chrome_key = None;
+        }
+        changed
     }
 
     /// The sticker the tool stamps: the one picked last.

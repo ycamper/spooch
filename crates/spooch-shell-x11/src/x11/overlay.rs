@@ -68,6 +68,11 @@ impl App {
         if matches!(sym, keys::XK_ALT_L | keys::XK_ALT_R) {
             self.alt_preview(false);
         }
+        if let Some(ed) = self.session.as_mut().and_then(|s| s.editor.as_mut())
+            && let Some(k) = editor_key(&self.keys, sym, e.detail)
+        {
+            ed.key_up(k);
+        }
     }
 
     pub(super) fn key(&mut self, e: KeyPressEvent) {
@@ -128,6 +133,16 @@ impl App {
             return;
         }
         let Some(s) = &mut self.session else { return };
+        if let Some((notches, sideways)) = keys::wheel(e.detail, e.state)
+            && s.drag.is_none()
+            && let Some(ed) = &mut s.editor
+        {
+            let ctrl = e.state.contains(KeyButMask::CONTROL);
+            if ed.wheel(doc_point(p), notches, sideways, ctrl).repaint {
+                s.damage = s.damage.union(&chrome_rect(ed));
+            }
+            return;
+        }
         if e.detail != 1 || s.drag.is_some() {
             return;
         }

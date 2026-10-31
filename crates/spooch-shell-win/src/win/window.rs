@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetSystemMetrics, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible, LoadCursorW,
     MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE, SW_SHOWNORMAL,
     SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_APP, WM_CHAR,
-    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN,
     WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
@@ -41,15 +41,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{HSTRING, PCWSTR, w};
 
 use super::editing::{
-    blit_from, cursor_id, deliver, drag_dir, drag_slop, editor_key, mods_now, shell_drag,
+    Wheel, blit_from, cursor_id, deliver, drag_dir, drag_slop, editor_key, mods_now, shell_drag,
 };
 use super::log::{self, Stopwatch};
 
 const CLASS_NAME: PCWSTR = w!("SpoochEditor");
-/// Wheel delta for one notch.
-const NOTCH: f32 = 120.0;
-const MK_SHIFT: usize = 0x0004;
-const MK_CONTROL: usize = 0x0008;
 /// Posted from the gallery's thumbnail thread when it has some ready.
 const WM_NEWS: u32 = WM_APP + 6;
 
@@ -369,17 +365,18 @@ extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
             LRESULT(0)
         }
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
-            let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32 / NOTCH;
-            let keys = wparam.0 & 0xFFFF;
-            let ctrl = keys & MK_CONTROL != 0;
-            let sideways = msg == WM_MOUSEHWHEEL || keys & MK_SHIFT != 0;
-            // A tilt to the right scrolls right.
-            let notches = if msg == WM_MOUSEHWHEEL { -delta } else { delta };
+            let w = Wheel::from(msg, wparam);
             let p = pointer(hwnd);
             carry_out(
                 hwnd,
-                with_window(|e| e.session.wheel(p, notches, sideways, ctrl)),
+                with_window(|e| e.session.wheel(p, w.notches, w.sideways, w.ctrl)),
             );
+            LRESULT(0)
+        }
+        WM_KEYUP => {
+            if let Some(k) = editor_key(wparam.0 as u16) {
+                with_window(|e| e.session.key_up(k));
+            }
             LRESULT(0)
         }
         WM_KEYDOWN => {

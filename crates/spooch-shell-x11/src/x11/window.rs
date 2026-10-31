@@ -314,12 +314,10 @@ impl App {
                             alt: false,
                         },
                     ),
-                    // The wheel: 4 and 5 up and down, 6 and 7 sideways.
-                    4 => ew.session.wheel(p, 1.0, shift, ctrl),
-                    5 => ew.session.wheel(p, -1.0, shift, ctrl),
-                    6 => ew.session.wheel(p, 1.0, true, ctrl),
-                    7 => ew.session.wheel(p, -1.0, true, ctrl),
-                    _ => Response::default(),
+                    b => match keys::wheel(b, e.state) {
+                        Some((notches, sideways)) => ew.session.wheel(p, notches, sideways, ctrl),
+                        None => Response::default(),
+                    },
                 };
                 self.editor_carry_out(r, e.time);
             }
@@ -374,6 +372,9 @@ impl App {
                 let sym = self.keys.sym(e.detail);
                 if matches!(sym, keys::XK_ALT_L | keys::XK_ALT_R) {
                     ew.dirty |= ew.session.doc.set_preview(false);
+                }
+                if let Some(k) = super::editor_key(&self.keys, sym, e.detail) {
+                    ew.session.key_up(k);
                 }
             }
             _ => return false,
