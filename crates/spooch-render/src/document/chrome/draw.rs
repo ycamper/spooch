@@ -416,6 +416,32 @@ impl Document {
                 }
             }
 
+            // The saved looks: each a dot in its colour and size, ringed
+            // when it's the look in use; empty ones dashed.
+            let saved = self.quick_styles().unwrap_or_default();
+            for ((i, b), st) in layout.quick.iter().enumerate().zip(saved) {
+                let rect = local(b);
+                let rr = RRect::new_rect_xy(rect.with_inset((s, s)), 6.0 * s, 6.0 * s);
+                if self.hovered == Some(Hit::Quick(i)) {
+                    canvas.draw_rrect(rr, &fill(HOVER));
+                }
+                let Some(st) = st else {
+                    let mut p = stroke(ICON, s);
+                    p.set_path_effect(skia_safe::PathEffect::dash(&[2.0 * s, 2.0 * s], 0.0));
+                    canvas.draw_rrect(rr, &p);
+                    continue;
+                };
+                let ring = if style == Some(st) { WHITE } else { PANEL_EDGE };
+                canvas.draw_rrect(rr, &stroke(ring, 1.5 * s));
+                let dot = if layout.strength {
+                    ICON
+                } else {
+                    self.colour_of(st)
+                };
+                let radius = (2.5 + f32::from(st.size) * 1.1) * s;
+                canvas.draw_circle(rect.center(), radius, &fill(dot));
+            }
+
             // "Aa" in the label font.
             if let (Some(b), Some(st)) = (&layout.font, style) {
                 let rect = local(b);
@@ -441,8 +467,6 @@ impl Document {
         })
     }
 
-    /// The font dropdown's pill and, while open, its list: each font's name
-    /// written in that font.
     /// The grid of every sticker; the one the tool stamps is marked.
     fn draw_sticker_grid(&self, grid: IRect, cells: &[IRect]) -> Panel {
         let s = self.scale;
@@ -472,6 +496,8 @@ impl Document {
         })
     }
 
+    /// The font dropdown's pill and, while open, its list: each font's name
+    /// written in that font.
     fn draw_picker(&self, layout: &PickerLayout) -> Vec<Panel> {
         let s = self.scale;
         let Some(current) = self.picker_label().map(|l| l.font) else {
@@ -628,6 +654,10 @@ impl Document {
                     ["White", "Black", "Darker", "No", "Auto"].get(usize::from(style.edge))?;
                 format!("{name} edge   click to change")
             }
+            Hit::Quick(i) => match self.quick_styles()?.get(i)? {
+                Some(_) => "Use this look   Shift+click to save over it".to_string(),
+                None => "Save the current look here".to_string(),
+            },
             Hit::Font => {
                 let (style, _) = self.shown_style()?;
                 format!(
@@ -728,7 +758,8 @@ impl Document {
             | Hit::Look
             | Hit::Slider(_)
             | Hit::Edge
-            | Hit::Font => {
+            | Hit::Font
+            | Hit::Quick(_) => {
                 let row = row?;
                 let b = row.place_of(hit)?;
                 // Above the row, or under it in the window.

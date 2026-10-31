@@ -116,6 +116,35 @@ fn the_look_button_puts_labels_on_plates() {
 }
 
 #[test]
+fn saved_looks_keep_and_bring_back_a_style() {
+    let mut d = doc();
+    d.set_tool(Tool::Box);
+    let chip = |d: &Document, i: usize| Rect::from(d.row_layout().unwrap().quick[i]).center();
+    let saved = |d: &Document| d.styles().quick[style::tool_index(Tool::Box)][0];
+    // An empty chip keeps the look in use.
+    d.set_colour(3);
+    d.step_size(true);
+    let kept = d.tool_style();
+    d.begin_drag(chip(&d, 0));
+    assert_eq!(saved(&d), Some(kept));
+    // Later, the chip brings it back.
+    d.set_colour(0);
+    d.step_size(false);
+    assert_ne!(d.tool_style(), kept);
+    d.begin_drag(chip(&d, 0));
+    assert_eq!(d.tool_style(), kept);
+    // Shift+click saves over it.
+    d.set_colour(5);
+    d.set_modifiers(true, true);
+    d.begin_drag(chip(&d, 0));
+    d.set_modifiers(false, true);
+    assert_eq!(saved(&d), Some(d.tool_style()));
+    // Stickers have no saved looks.
+    d.set_tool(Tool::Sticker);
+    assert!(d.row_layout().unwrap().quick.is_empty());
+}
+
+#[test]
 fn text_editing_and_undo() {
     let mut d = doc();
     d.begin_text(Point::new(20.0, 50.0));

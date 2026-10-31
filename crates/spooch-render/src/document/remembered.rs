@@ -1,9 +1,9 @@
 //! The styles as a small JSON file, so the last picks survive a restart:
-//! each tool's style, the framing and the pinned one, the gallery, the
-//! recent stickers and the format. Frames are kept by key and stickers by
-//! name, so new built-ins don't shift them; anything unknown or out of
-//! range keeps what it was. The palette isn't kept: `settings.txt` picks
-//! the starting one.
+//! each tool's style and saved looks, the framing and the pinned one, the
+//! gallery, the recent stickers and the format. Frames are kept by key
+//! and stickers by name, so new built-ins don't shift them; anything
+//! unknown or out of range keeps what it was. The palette isn't kept:
+//! `settings.txt` picks the starting one.
 
 use std::collections::BTreeMap;
 
@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::frame::{FRAME_COLOURS, Frame, SHADOWS};
 use super::style::{
-    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, RECENT_STICKERS, SIZES, Style, Styles,
-    tool_index,
+    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES, Style,
+    Styles, tool_index,
 };
 use super::{Format, Tool};
 use crate::{HighlightLook, LabelFont, Plate, STICKERS};
@@ -22,6 +22,9 @@ use crate::{HighlightLook, LabelFont, Plate, STICKERS};
 struct Remembered {
     /// By tool name.
     tools: BTreeMap<String, Style>,
+    /// Saved looks by tool name; only tools with some.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    quick: BTreeMap<String, Vec<Option<Style>>>,
     #[serde(flatten)]
     framing: FramingFile,
     /// "Use for every capture".
@@ -83,13 +86,32 @@ impl Style {
     }
 }
 
+/// How the file names `tool`.
+fn tool_key(tool: Tool) -> String {
+    tool.name().to_lowercase()
+}
+
+/// The index (`tool_index`) of the tool called `name`, ignoring case.
+fn tool_named(name: &str) -> Option<usize> {
+    Tool::ALL
+        .iter()
+        .find(|t| t.name().eq_ignore_ascii_case(name))
+        .map(|t| tool_index(*t))
+}
+
 impl Styles {
     /// The styles and `format` as JSON, for `with_remembered`.
     pub fn remembered(&self, format: Format) -> String {
         let file = Remembered {
             tools: Tool::ALL
                 .iter()
-                .map(|t| (t.name().to_lowercase(), self.tools[tool_index(*t)]))
+                .map(|&t| (tool_key(t), self.tools[tool_index(t)]))
+                .collect(),
+            quick: Tool::ALL
+                .iter()
+                .map(|&t| (tool_key(t), self.quick[tool_index(t)]))
+                .filter(|(_, saved)| saved.iter().any(Option::is_some))
+                .map(|(name, saved)| (name, saved.to_vec()))
                 .collect(),
             framing: self.framing.into(),
             pinned: self.pinned.map(FramingFile::from),
@@ -111,12 +133,20 @@ impl Styles {
     pub fn with_remembered(mut self, json: &str) -> Result<(Styles, Option<Format>), String> {
         let file: Remembered = serde_json::from_str(json).map_err(|e| e.to_string())?;
         for (name, style) in &file.tools {
-            if let Some(t) = Tool::ALL
-                .iter()
-                .find(|t| t.name().eq_ignore_ascii_case(name))
+            if let Some(t) = tool_named(name)
                 && style.in_range()
             {
-                self.tools[tool_index(*t)] = *style;
+                self.tools[t] = *style;
+            }
+        }
+        for (name, saved) in &file.quick {
+            if let Some(t) = tool_named(name) {
+                for (slot, st) in self.quick[t]
+                    .iter_mut()
+                    .zip(saved.iter().take(QUICK_STYLES))
+                {
+                    *slot = st.filter(Style::in_range);
+                }
             }
         }
         if let Some(f) = file.framing.framing() {
@@ -170,6 +200,7 @@ mod tests {
             shadow: 2,
         };
         styles.pinned = Some(styles.framing);
+        styles.quick[t][1] = Some(styles.tools[t]);
         styles.gallery = false;
         styles.stickers[0] = STICKERS.len() as u8 - 1;
         let json = styles.remembered(Format::Jpeg);
