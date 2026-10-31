@@ -383,7 +383,12 @@ impl App {
         let window = s.window;
         s.cursor = self.cursors.crosshair;
         if let Err(e) = self.grab_input(window) {
+            // The overlay can't be used without input: close the capture
+            // (it's kept in Recents) rather than leave it covering the
+            // screen.
             log::line(format!("could not take input back after the drag: {e}"));
+            self.end(Done::Cancelled, time);
+            return;
         }
         self.update_cursor();
     }
@@ -597,7 +602,19 @@ impl App {
         sync(&self.conn)?;
         sw.mark("map + first paint");
 
-        self.grab_input(window)?;
+        if let Err(e) = self.grab_input(window) {
+            // Left up, the overlay would cover every screen with nothing
+            // listening to it: a hang only killing Spooch gets out of.
+            let _ = self.conn.destroy_window(window);
+            for p in [bright, dim, back] {
+                let _ = self.conn.free_pixmap(p);
+            }
+            let _ = self.conn.flush();
+            system::tell(
+                "Spooch couldn't take the mouse and keyboard: another app is holding                  them, probably an open menu. Close it and try again.",
+            );
+            return Err(e);
+        }
         sw.mark("grab input");
 
         let pointer = self.pointer();
@@ -678,7 +695,11 @@ impl App {
             }
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
-        Err("could not grab keyboard and pointer".into())
+        // Don't keep half: holding only the keyboard locks the user out.
+        let _ = self.conn.ungrab_keyboard(CURRENT_TIME);
+        let _ = self.conn.ungrab_pointer(CURRENT_TIME);
+        let _ = self.conn.flush();
+        Err("could not grab keyboard and pointer; another app holds them".into())
     }
 
     /// Turn the picked `area` into the editor: its frozen pixels become a
