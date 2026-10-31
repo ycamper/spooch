@@ -87,6 +87,10 @@ pub struct Session {
     /// How the capture looked when it was last saved, while it still does:
     /// the bar's Save then shows the picture instead.
     saved: Option<String>,
+    /// Whether closing keeps it in Recents: once it's been copied, saved,
+    /// shared, dragged out or taken to the editor window, or when it came
+    /// from Recents. A capture cancelled before any of that isn't kept.
+    wanted: bool,
 }
 
 impl Session {
@@ -138,6 +142,7 @@ impl Session {
             upload: None,
             link: None,
             saved: None,
+            wanted: pixels_kept,
         }
     }
 
@@ -301,6 +306,7 @@ impl Session {
     pub fn into_window(mut self) -> Session {
         self.host = Host::Window;
         self.drag_out_from = None;
+        self.wanted = true;
         self.doc.confine();
         self
     }
@@ -384,6 +390,7 @@ impl Session {
         if let Some(from) = self.drag_out_from {
             if far(from) {
                 self.drag_out_from = None;
+                self.wanted = true;
                 r.effects.push(Effect::StartDragOut);
             }
             return r;
@@ -533,7 +540,7 @@ impl Session {
 
     /// Copy: in the window, the selected marks when there are some; else
     /// the image.
-    fn copy(&self) -> Effect {
+    fn copy(&mut self) -> Effect {
         if self.host == Host::Window
             && let Some(marks) = self.doc.copy_selected()
         {
@@ -580,7 +587,8 @@ impl Session {
         stale
     }
 
-    fn deliver(&self, save: bool) -> Effect {
+    fn deliver(&mut self, save: bool) -> Effect {
+        self.wanted = true;
         Effect::Deliver {
             save,
             close: self.host == Host::Overlay,
