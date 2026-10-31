@@ -49,6 +49,11 @@ impl BarMenu {
             BarMenu::Colour => BarItem::FrameColour,
         }
     }
+
+    /// The row of "Use for every capture": the Frame menu's last.
+    fn pin_row(self) -> Option<usize> {
+        (self == BarMenu::Frame).then(|| super::Frame::all().len())
+    }
 }
 
 /// What a click on the bar asks the shell to do.
@@ -75,6 +80,8 @@ const MARGIN: f32 = 8.0;
 const MENU_ROW: f32 = 26.0;
 /// The Frame menu's last row, after the frames.
 const PIN: &str = "Use for every capture";
+/// Room for a swatch or tick box before a menu row's name.
+const ROW_MARK: f32 = 22.0;
 
 /// Where the bar and its items sit.
 pub(super) struct BarLayout {
@@ -268,12 +275,13 @@ impl Document {
         let (_, button, _) = bar.items.iter().find(|(i, ..)| *i == menu.button())?;
         let font = self.bar_font();
         let names = self.menu_names(menu);
-        // Colours get a swatch before the name, and the pin a tick box.
+        let pin = menu.pin_row();
         let w = names
             .iter()
-            .map(|name| {
-                let mark = menu == BarMenu::Colour || name == PIN;
-                self.text_width(font.as_ref(), name) + if mark { 22.0 * s } else { 0.0 }
+            .enumerate()
+            .map(|(i, name)| {
+                let marked = menu == BarMenu::Colour || pin == Some(i);
+                self.text_width(font.as_ref(), name) + if marked { ROW_MARK * s } else { 0.0 }
             })
             .fold(0.0f32, f32::max);
         let w = ((w + 28.0 * s).ceil() as i32).max(button.width());
@@ -326,12 +334,10 @@ impl Document {
     /// Pick row `i` of the open menu, and close it.
     pub(super) fn pick_menu(&mut self, i: usize) {
         match self.bar_menu {
+            Some(m) if m.pin_row() == Some(i) => self.toggle_pin(),
             Some(BarMenu::Frame) => {
-                let frames = super::Frame::all();
-                match frames.get(i) {
-                    Some((f, _)) => self.set_frame(*f),
-                    None if i == frames.len() => self.toggle_pin(),
-                    None => {}
+                if let Some((f, _)) = super::Frame::all().get(i) {
+                    self.set_frame(*f);
                 }
             }
             Some(BarMenu::Colour) => self.set_frame_colour(i as u8),
@@ -370,6 +376,8 @@ impl Document {
         let font = self.bar_font();
         let names = self.menu_names(menu);
         let current = self.menu_current(menu);
+        let pin = menu.pin_row();
+        let pinned = self.look_pinned();
         panel(list, |canvas| {
             draw_list(
                 canvas,
@@ -378,21 +386,21 @@ impl Document {
                 Some(current),
                 hovered,
                 s,
-                |i, rect, on| {
-                    let mut text_x = rect.left + 10.0 * s;
-                    let mut on = on;
+                |i, rect, in_use| {
                     let mark = Point::new(rect.left + 17.0 * s, rect.center_y());
+                    let is_pin = pin == Some(i);
                     if menu == BarMenu::Colour {
                         swatch(canvas, mark, 7.0 * s, self.frame_colour_shown(i as u8), s);
-                        text_x += 22.0 * s;
-                    } else if names.get(i).is_some_and(|n| n == PIN) {
+                    } else if is_pin {
                         let y = rect.top + 0.5 * s;
                         let line = super::theme::stroke(DIVIDER, s);
                         canvas.draw_line((rect.left, y), (rect.right, y), &line);
-                        tick_box(canvas, mark, self.look_pinned(), s);
-                        on = self.look_pinned();
-                        text_x += 22.0 * s;
+                        tick_box(canvas, mark, pinned, s);
                     }
+                    let on = in_use || (is_pin && pinned);
+                    let marked = menu == BarMenu::Colour || is_pin;
+                    let indent = if marked { 10.0 + ROW_MARK } else { 10.0 };
+                    let text_x = rect.left + indent * s;
                     if let (Some(font), Some(name)) = (&font, names.get(i)) {
                         let p = fill(if on { TEXT } else { MUTED });
                         let baseline = centred_baseline(font, rect.center_y());
@@ -600,13 +608,13 @@ mod tests {
         pick(&mut d, 0);
         assert!(!d.look_pinned());
         let next = d.styles().for_next_capture();
-        assert_eq!((next.frame, next.shadow), (terminal, 2));
+        assert_eq!((next.framing.frame, next.framing.shadow), (terminal, 2));
         // Unticking goes back to starting with the last pick.
         d.set_styles(next);
         pick(&mut d, pin);
         assert!(!d.look_pinned());
         d.set_shadow(0);
-        assert_eq!(d.styles().for_next_capture().shadow, 0);
+        assert_eq!(d.styles().for_next_capture().framing.shadow, 0);
     }
 
     #[test]

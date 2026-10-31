@@ -129,11 +129,11 @@ pub(super) fn last_title() -> String {
 
 impl Document {
     pub fn frame(&self) -> Frame {
-        self.styles.frame
+        self.styles.framing.frame
     }
 
     pub fn set_frame(&mut self, frame: Frame) {
-        self.styles.frame = frame;
+        self.styles.framing.frame = frame;
         self.chrome_key = None;
     }
 
@@ -163,27 +163,27 @@ impl Document {
 
     /// The window frames' colour, into `FRAME_COLOURS`.
     pub fn frame_colour(&self) -> u8 {
-        self.styles.frame_colour
+        self.styles.framing.frame_colour
     }
 
     pub(crate) fn set_frame_colour(&mut self, index: u8) {
-        self.styles.frame_colour = index % FRAME_COLOURS.len() as u8;
+        self.styles.framing.frame_colour = index % FRAME_COLOURS.len() as u8;
         self.chrome_key = None;
     }
 
     /// The drop shadow, into `SHADOWS`.
     pub fn shadow(&self) -> u8 {
-        self.styles.shadow
+        self.styles.framing.shadow
     }
 
     pub fn set_shadow(&mut self, level: u8) {
-        self.styles.shadow = level % SHADOWS.len() as u8;
+        self.styles.framing.shadow = level % SHADOWS.len() as u8;
         self.chrome_key = None;
     }
 
     /// Whether every capture starts with this frame, colour and shadow.
     pub(crate) fn look_pinned(&self) -> bool {
-        self.styles.pinned == Some(self.styles.look())
+        self.styles.pinned == Some(self.styles.framing)
     }
 
     /// Make this frame, colour and shadow what every capture starts with,
@@ -192,7 +192,7 @@ impl Document {
         self.styles.pinned = if self.look_pinned() {
             None
         } else {
-            Some(self.styles.look())
+            Some(self.styles.framing)
         };
         self.chrome_key = None;
     }
@@ -270,7 +270,7 @@ impl Document {
             canvas,
             frame.as_deref(),
             sh,
-            self.styles.frame_colour,
+            self.styles.framing.frame_colour,
             &self.frame_title,
             content,
             (w, h),
@@ -408,7 +408,7 @@ mod tests {
             assert_eq!(at(cx, cy), &plain[i..i + 4], "{name}");
         }
         // The frame is kept with the styles, for the next capture.
-        assert_eq!(d.styles().frame, Frame::builtin("rounded"));
+        assert_eq!(d.styles().framing.frame, Frame::builtin("rounded"));
         // A document saved with a frame that's since been retired gets
         // its nearest one.
         assert_eq!(

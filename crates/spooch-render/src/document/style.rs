@@ -101,7 +101,8 @@ pub const MIN_OPACITY: u8 = 10;
 const OPACITY_STEP: u8 = 5;
 
 /// A style, as indexes into the sets above.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Style {
     pub color: u8,
     /// Size step, or strength for blur and pixelate.
@@ -172,12 +173,8 @@ const FIRST_STICKERS: [&str; RECENT_STICKERS] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Styles {
     pub(super) tools: [Style; Tool::ALL.len()],
-    /// The frame round the output.
-    pub(super) frame: Frame,
-    /// Into `FRAME_COLOURS`.
-    pub(super) frame_colour: u8,
-    /// Into `SHADOWS`.
-    pub(super) shadow: u8,
+    /// The frame round the output, its colour and shadow.
+    pub(super) framing: Framing,
     /// The mark colour preset, into `PALETTES`.
     pub(super) palette: u8,
     /// Whether the editor window shows its gallery.
@@ -185,16 +182,18 @@ pub struct Styles {
     /// The stickers picked lately, newest first, into `STICKERS`; the
     /// first is the one the tool stamps.
     pub(super) stickers: [u8; RECENT_STICKERS],
-    /// The frame, colour and shadow every capture starts with, ticked in
-    /// the Frame menu. Without one, each capture starts with the last.
-    pub(super) pinned: Option<Pinned>,
+    /// The look every capture starts with ("Use for every capture" in the
+    /// Frame menu). Without one, each capture starts with the last.
+    pub(super) pinned: Option<Framing>,
 }
 
-/// The output's look as "Use for every capture" keeps it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Pinned {
+/// What goes round the output.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Framing {
     pub frame: Frame,
+    /// Into `FRAME_COLOURS`.
     pub frame_colour: u8,
+    /// Into `SHADOWS`.
     pub shadow: u8,
 }
 
@@ -204,9 +203,7 @@ impl Default for Styles {
         tools[tool_index(Tool::Highlight)].color = YELLOW;
         Styles {
             tools,
-            frame: Frame::NONE,
-            frame_colour: 0,
-            shadow: 0,
+            framing: Framing::default(),
             palette: 0,
             gallery: true,
             stickers: FIRST_STICKERS
@@ -225,23 +222,12 @@ impl Styles {
     }
 
     /// What the next capture starts with: these styles, with the pinned
-    /// frame, colour and shadow back if this one changed them.
+    /// framing back if this one changed it.
     pub fn for_next_capture(mut self) -> Styles {
         if let Some(p) = self.pinned {
-            self.frame = p.frame;
-            self.frame_colour = p.frame_colour;
-            self.shadow = p.shadow;
+            self.framing = p;
         }
         self
-    }
-
-    /// The frame, colour and shadow in use, as a pin.
-    pub(super) fn look(&self) -> Pinned {
-        Pinned {
-            frame: self.frame,
-            frame_colour: self.frame_colour,
-            shadow: self.shadow,
-        }
     }
 }
 
@@ -377,11 +363,8 @@ impl Document {
     /// For a reopened capture: the picks carried from other captures, but
     /// its own frame, frame colour and shadow.
     pub fn carry_styles(&mut self, styles: Styles) {
-        let own = self.styles;
         self.set_styles(Styles {
-            frame: own.frame,
-            frame_colour: own.frame_colour,
-            shadow: own.shadow,
+            framing: self.styles.framing,
             ..styles
         });
     }
