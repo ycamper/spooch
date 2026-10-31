@@ -10,7 +10,7 @@ use skia_safe::{
 
 use super::*;
 use crate::document::bar::BarLayout;
-use crate::document::style::{PALETTES, SIZES};
+use crate::document::style::{PALETTES, SIZES, SMOOTH_STEPS};
 use crate::document::theme::{
     ACTIVE, FIELD, HOVER, ICON, PANEL, PANEL_EDGE, TEXT, WHITE, centred_baseline, chevron,
     draw_list, fill_rrect, rounded_panel,
@@ -326,6 +326,7 @@ impl Document {
                 (Slider::Size, layout.size),
                 (Slider::Opacity, layout.opacity),
                 (Slider::Outline, layout.outline),
+                (Slider::Smooth, layout.smooth),
             ];
             for (slider, track) in sliders {
                 let Some(track) = track else { continue };
@@ -646,6 +647,10 @@ impl Document {
                         crate::document::style::EDGE_WIDTHS[usize::from(style.edge_width)
                             .min(crate::document::style::EDGE_WIDTHS.len() - 1)]
                     ),
+                    Slider::Smooth => format!(
+                        "Anti-aliasing {}%",
+                        u32::from(style.smooth) * 100 / u32::from(SMOOTH_STEPS)
+                    ),
                 }
             }
             Hit::Edge => {
@@ -833,7 +838,8 @@ fn plate_icon(canvas: &Canvas, icon: Rect, plate: crate::Plate, colour: Color4f,
 }
 
 /// The small icon before a slider: two dots for size, a soft dot for
-/// strength, a half-filled circle for opacity.
+/// strength, a half-filled circle for opacity, rings for the outline and
+/// a stair of cells for anti-aliasing.
 fn draw_slider_icon(
     canvas: &Canvas,
     slider: Slider,
@@ -868,6 +874,21 @@ fn draw_slider_icon(
             canvas.draw_circle((c.x - 3.5 * s, c.y), 2.5 * s, &p);
             p.set_stroke_width(2.4 * s);
             canvas.draw_circle((c.x + 3.0 * s, c.y), 3.5 * s, &p);
+        }
+        // Anti-aliasing: a stair of cells, faded ones in its corners.
+        (Slider::Smooth, _) => {
+            let cell = 4.0 * s;
+            let faded = fill(Color4f { a: 0.4, ..ICON });
+            for (x, y, paint) in [
+                (0.0, 2.0, &p),
+                (1.0, 1.0, &p),
+                (2.0, 0.0, &p),
+                (1.0, 2.0, &faded),
+                (2.0, 1.0, &faded),
+            ] {
+                let at = Point::new(c.x + (x - 1.5) * cell, c.y + (y - 1.5) * cell);
+                canvas.draw_rect(Rect::from_xywh(at.x, at.y, cell, cell), paint);
+            }
         }
     }
 }

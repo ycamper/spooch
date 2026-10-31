@@ -35,18 +35,18 @@ pub(super) struct Grid {
 
 impl Grid {
     /// Run `draw` (in desktop pixels) at one pixel per cell over `area`,
-    /// cut every cell to fully inked or clear, outline the ink in `edge`
-    /// (a colour and a width in cells), and put the cells onto `onto`,
-    /// each a crisp square.
+    /// round every cell's coverage to the shades `finish` allows, outline
+    /// the ink, and put the cells onto `onto`, each a crisp square.
     pub(super) fn draw(
         &self,
         onto: &Canvas,
         area: Rect,
-        edge: Option<(Color4f, u8)>,
+        finish: Finish,
         draw: impl FnOnce(&Canvas),
     ) {
         const CLEAR: Color4f = Color4f::new(0.0, 0.0, 0.0, 0.0);
         let c = self.cell;
+        let edge = finish.edge;
         // Room on each side for the outline.
         let spare = c * f32::from(edge.map_or(0, |(_, cells)| cells));
         let mut area = area.with_outset((spare, spare));
@@ -70,12 +70,15 @@ impl Grid {
         s.translate(-corner);
         draw(s);
         s.restore();
-        let soft = surface.image_snapshot();
-        let s = surface.canvas();
-        s.clear(CLEAR);
         let mut cut = Paint::default();
-        cut.set_color_filter(alpha_cut());
-        s.draw_image(&soft, (0, 0), Some(&cut));
+        cut.set_color_filter(shades(finish.smooth));
+        let reshade = |surface: &mut skia_safe::Surface| {
+            let soft = surface.image_snapshot();
+            let s = surface.canvas();
+            s.clear(CLEAR);
+            s.draw_image(&soft, (0, 0), Some(&cut));
+        };
+        reshade(&mut surface);
         if let Some((e, cells)) = edge {
             // The ink in the edge colour, `cells` every way round it.
             let hard = surface.image_snapshot();
@@ -86,6 +89,10 @@ impl Grid {
             let n = i32::from(cells);
             for (dx, dy) in (-n..=n).flat_map(|x| (-n..=n).map(move |y| (x, y))) {
                 s.draw_image(&hard, (dx, dy), Some(&ring));
+            }
+            // Soft cells overlap in the ring; back to the shades allowed.
+            if finish.smooth > 0.0 {
+                reshade(&mut surface);
             }
         }
         let cells = surface.image_snapshot();
@@ -99,21 +106,38 @@ impl Grid {
     }
 }
 
+/// How the cells of one mark are finished.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Finish {
+    /// The outline round the ink: its colour and its width in cells.
+    pub edge: Option<(Color4f, u8)>,
+    /// Anti-aliasing, 0 to 1 (see `Look::smooth`).
+    pub smooth: f32,
+}
+
 /// Ready `look` for pixel art: no soft shadow, and its edge taken out to
 /// be drawn as an outline instead, 1 to 3 cells wide as the outline slider
 /// says.
-pub(super) fn outline_of(look: &mut crate::Look) -> Option<(Color4f, u8)> {
+pub(super) fn finish_of(look: &mut crate::Look) -> Finish {
     look.shadow = false;
     let cells = look.edge_width.round().clamp(1.0, 3.0) as u8;
-    look.edge.take().map(|e| (e, cells))
+    Finish {
+        edge: look.edge.take().map(|e| (e, cells)),
+        smooth: look.smooth,
+    }
 }
 
-/// A filter that makes every cell fully opaque or fully clear, so edges
-/// are hard instead of soft.
-fn alpha_cut() -> Option<ColorFilter> {
+/// A filter that rounds every cell's coverage to a few shades: at
+/// `smooth` 0 fully inked or clear, one more shade per step up, and none
+/// at 1, where cells keep their coverage.
+fn shades(smooth: f32) -> Option<ColorFilter> {
+    if smooth >= 1.0 {
+        return None;
+    }
+    let gaps = 1.0 + (smooth.max(0.0) * 4.0).round();
     let mut table = [0u8; 256];
     for (i, a) in table.iter_mut().enumerate() {
-        *a = if i >= 128 { 255 } else { 0 };
+        *a = ((i as f32 / 255.0 * gaps).round() / gaps * 255.0).round() as u8;
     }
     color_filters::table_argb(&table, None, None, None)
 }

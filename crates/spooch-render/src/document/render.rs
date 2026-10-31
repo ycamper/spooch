@@ -125,7 +125,10 @@ impl Document {
                     l.look.edge = Some(Mark::Label(l.clone()).auto_edge(&self.base, Some(tf)));
                 }
                 let area = Mark::Label(l.clone()).reach(Some(tf));
-                let edge = grid.as_ref().and_then(|_| pixel::outline_of(&mut l.look));
+                let finish = grid
+                    .as_ref()
+                    .map(|_| pixel::finish_of(&mut l.look))
+                    .unwrap_or_default();
                 let typed = |c: &Canvas| {
                     c.save();
                     c.rotate(l.angle.to_degrees(), Some(l.pivot(tf)));
@@ -133,7 +136,7 @@ impl Document {
                     c.restore();
                 };
                 match (&grid, area) {
-                    (Some(grid), Some(area)) => grid.draw(canvas, area, edge, typed),
+                    (Some(grid), Some(area)) => grid.draw(canvas, area, finish, typed),
                     _ => typed(canvas),
                 }
             }

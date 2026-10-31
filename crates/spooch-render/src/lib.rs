@@ -45,6 +45,9 @@ pub struct Look {
     pub auto_edge: bool,
     /// Whether it casts the soft drop shadow. Pixel art draws without.
     pub shadow: bool,
+    /// Pixel art's anti-aliasing, 0 to 1: how much of their coverage the
+    /// cells along its edges keep. 0 makes every cell inked or clear.
+    pub smooth: f32,
 }
 
 impl Default for Look {
@@ -55,6 +58,7 @@ impl Default for Look {
             edge_width: 1.0,
             auto_edge: false,
             shadow: true,
+            smooth: 0.0,
         }
     }
 }

@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::frame::{FRAME_COLOURS, Frame, SHADOWS};
 use super::style::{
-    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES, Style,
-    Styles, tool_index,
+    EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES,
+    SMOOTH_STEPS, Style, Styles, tool_index,
 };
 use super::{Format, Tool};
 use crate::{HighlightLook, LabelFont, Plate, STICKERS};
@@ -84,6 +84,7 @@ impl Style {
             && (MIN_OPACITY..=100).contains(&self.opacity)
             && usize::from(self.font) < LabelFont::ALL.len()
             && usize::from(self.edge_width) < EDGE_WIDTHS.len()
+            && self.smooth <= SMOOTH_STEPS
             && usize::from(self.variant) < HighlightLook::ALL.len().max(Plate::ALL.len())
     }
 }

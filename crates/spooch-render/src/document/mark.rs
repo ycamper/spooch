@@ -78,9 +78,9 @@ impl Mark {
             return self.draw(canvas, base, typeface, scale, number);
         };
         let mut ink = self.with_edge_picked(base, typeface).into_owned();
-        let edge = ink.look_mut().and_then(pixel::outline_of);
+        let finish = ink.look_mut().map(pixel::finish_of).unwrap_or_default();
         self.faded(canvas, |c| {
-            grid.draw(c, area, edge, |c| {
+            grid.draw(c, area, finish, |c| {
                 ink.draw_solid(c, base, typeface, scale, number)
             })
         });

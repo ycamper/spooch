@@ -71,8 +71,8 @@ fn known_marks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<SavedMark>,
         .collect())
 }
 
-fn is_zero(n: &u8) -> bool {
-    *n == 0
+fn is_zero<T: Default + PartialEq>(n: &T) -> bool {
+    *n == T::default()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -204,6 +204,9 @@ struct SavedLook {
     /// The edge follows the background; `edge` is its fallback.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     auto_edge: bool,
+    /// Pixel art's anti-aliasing; older files have none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    smooth: f32,
 }
 
 impl From<Look> for SavedLook {
@@ -213,6 +216,7 @@ impl From<Look> for SavedLook {
             opacity: l.opacity,
             edge_width: l.edge_width,
             auto_edge: l.auto_edge,
+            smooth: l.smooth,
         }
     }
 }
@@ -225,6 +229,7 @@ impl From<SavedLook> for Look {
             opacity: l.opacity.clamp(0.0, 1.0),
             edge_width: l.edge_width.clamp(0.1, 10.0),
             auto_edge: l.auto_edge,
+            smooth: l.smooth.clamp(0.0, 1.0),
         }
     }
 }
