@@ -324,6 +324,81 @@ pub struct Label {
     /// straight, positive bends the middle down (a smile), negative up (a
     /// rainbow). Bent lines are centred on the first line's middle.
     pub bend: f32,
+    /// What the text sits on. Bent labels sit on nothing.
+    pub plate: Plate,
+}
+
+/// What a label sits on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Plate {
+    /// Nothing: the text has an edge, like the other marks.
+    #[default]
+    Outlined,
+    /// A white rounded box.
+    Bubble,
+    /// A box in the label's colour.
+    Tag,
+    /// A dark plate.
+    Badge,
+}
+
+impl Plate {
+    /// Every plate, in the order the look button steps through them.
+    pub const ALL: [Plate; 4] = [Plate::Outlined, Plate::Bubble, Plate::Tag, Plate::Badge];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Plate::Outlined => "Outlined",
+            Plate::Bubble => "Bubble",
+            Plate::Tag => "Tag",
+            Plate::Badge => "Badge",
+        }
+    }
+
+    /// The name saved files use.
+    pub fn key(self) -> &'static str {
+        match self {
+            Plate::Outlined => "outlined",
+            Plate::Bubble => "bubble",
+            Plate::Tag => "tag",
+            Plate::Badge => "badge",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Plate> {
+        Self::ALL.into_iter().find(|p| p.key() == key)
+    }
+
+    /// The plate's colour and the text's on it, for a label in `colour`;
+    /// `None` for no plate. The text turns black or white wherever its own
+    /// colour wouldn't read.
+    pub fn colours(self, colour: Color4f) -> Option<(Color4f, Color4f)> {
+        const WHITE: Color4f = Color4f::new(1.0, 1.0, 1.0, 1.0);
+        const INK: Color4f = Color4f::new(0.08, 0.085, 0.1, 1.0);
+        const DARK: Color4f = Color4f::new(0.11, 0.118, 0.137, 1.0);
+        let l = luminance(colour);
+        let (light, dark) = (l > 0.6, l < 0.2);
+        match self {
+            Plate::Outlined => None,
+            Plate::Bubble => Some((WHITE, if light { INK } else { colour })),
+            Plate::Tag => Some((colour, if light { INK } else { WHITE })),
+            Plate::Badge => Some((DARK, if dark { WHITE } else { colour })),
+        }
+    }
+
+    /// Corner radius for a plate `height` tall, from text `size`.
+    fn radius(self, height: f32, size: f32) -> f32 {
+        match self {
+            Plate::Bubble => height * 0.35,
+            Plate::Tag => size * 0.18,
+            Plate::Outlined | Plate::Badge => size * 0.1,
+        }
+    }
+}
+
+/// Roughly how light `c` looks, 0 to 1.
+fn luminance(c: Color4f) -> f32 {
+    0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
 }
 
 /// The fonts labels can use, all bundled (SIL Open Font License, see
@@ -740,10 +815,23 @@ impl Label {
             .unwrap_or(end)
     }
 
-    /// The box the text occupies: its widest line, from the first line's
-    /// cap height to just below the last baseline. On a curve, the box
-    /// round the letters.
+    /// The plate drawn, if any: straight labels only.
+    fn shown_plate(&self) -> Option<Plate> {
+        (self.bend == 0.0 && self.plate != Plate::Outlined).then_some(self.plate)
+    }
+
+    /// The box the label occupies: its widest line, from the first line's
+    /// cap height to just below the last baseline, and its plate round
+    /// that. On a curve, the box round the letters.
     pub fn bounds(&self, typeface: &Typeface) -> Rect {
+        let text = self.text_bounds(typeface);
+        match self.shown_plate() {
+            Some(_) => text.with_outset((self.size * 0.3, self.size * 0.12)),
+            None => text,
+        }
+    }
+
+    fn text_bounds(&self, typeface: &Typeface) -> Rect {
         let typeface = &self.face(typeface);
         if self.bend != 0.0 {
             let laid = self.curved(typeface);
@@ -775,6 +863,24 @@ impl Label {
     pub fn draw(&self, canvas: &Canvas, typeface: &Typeface, caret: Option<Caret>) {
         let typeface = &self.face(typeface);
         let s = self.size;
+        // The plate first, under any selection.
+        let plated = self
+            .shown_plate()
+            .and_then(|p| Some((p, p.colours(self.color)?)));
+        if let Some((plate, (behind, _))) = plated {
+            let r = self.bounds(typeface);
+            let radius = plate.radius(r.height(), s);
+            let mut pb = PathBuilder::new();
+            pb.add_rrect(RRect::new_rect_xy(r, radius, radius), None, None);
+            draw_filled(
+                canvas,
+                &pb.detach(),
+                behind,
+                None,
+                0.0,
+                (s * 0.12, s * 0.06),
+            );
+        }
         // Text as a path, so outline, shadow and fill line up exactly.
         let text = self.layout(typeface);
         let mut path = text.path;
@@ -853,6 +959,11 @@ impl Label {
             canvas.restore();
         }
 
+        // On a plate the text needs no edge or shadow.
+        if let Some((_, (_, on))) = plated {
+            canvas.draw_path(&path, &fill(on));
+            return;
+        }
         // Text's counters fill in fast, so thick edges grow half as
         // quickly on labels.
         let k = self.look.edge_width;

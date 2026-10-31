@@ -76,8 +76,8 @@ pub(super) enum Hit {
     Colour(usize),
     /// The colour preset button.
     Palette,
-    /// The highlight look button.
-    HighlightLook,
+    /// The look button: highlight looks, or label plates.
+    Look,
     Slider(Slider),
     Edge,
     /// The label font button.
@@ -113,7 +113,7 @@ pub(super) struct RowLayout {
     pub colours: Vec<IRect>,
     /// The button that switches the colour preset.
     pub palette: Option<IRect>,
-    /// The highlight look button, for highlights.
+    /// The look button, for highlights and labels.
     pub look: Option<IRect>,
     /// The size slider's track; strength for blur and pixelate.
     pub size: Option<IRect>,
@@ -148,7 +148,7 @@ impl RowLayout {
             .collect();
         let optional = [
             (Hit::Palette, self.palette),
-            (Hit::HighlightLook, self.look),
+            (Hit::Look, self.look),
             (Hit::Slider(Slider::Size), self.size),
             (Hit::Slider(Slider::Opacity), self.opacity),
             (Hit::Edge, self.edge),
@@ -294,7 +294,7 @@ impl Document {
         let slider_w = SLIDER_ICON + SLIDER_ICON_GAP + SLIDER_W;
         // Widths of the groups after the colours, each preceded by a gap.
         let mut rest = Vec::new();
-        let has_look = self.shows_highlight();
+        let has_look = self.looks().is_some();
         if has_look {
             rest.push(SIZE_BUTTON);
         }
@@ -717,8 +717,8 @@ impl Document {
             Some(Hit::Palette) => {
                 self.cycle_palette();
             }
-            Some(Hit::HighlightLook) => {
-                self.cycle_highlight();
+            Some(Hit::Look) => {
+                self.cycle_look();
             }
             Some(Hit::Slider(slider)) => {
                 if let Some(track) = self.slider_track(slider) {

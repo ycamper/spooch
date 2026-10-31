@@ -20,6 +20,7 @@ impl Document {
             angle: 0.0,
             font: style::font_of(style),
             bend: 0.0,
+            plate: style::plate_of(style),
         });
         self.caret = crate::Caret::default();
         self.fresh = false;

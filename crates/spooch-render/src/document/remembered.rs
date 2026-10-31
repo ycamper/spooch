@@ -15,7 +15,7 @@ use super::style::{
     tool_index,
 };
 use super::{Format, Tool};
-use crate::{HighlightLook, LabelFont, STICKERS};
+use crate::{HighlightLook, LabelFont, Plate, STICKERS};
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -79,7 +79,7 @@ impl Style {
             && (MIN_OPACITY..=100).contains(&self.opacity)
             && usize::from(self.font) < LabelFont::ALL.len()
             && usize::from(self.edge_width) < EDGE_WIDTHS.len()
-            && usize::from(self.highlight) < HighlightLook::ALL.len()
+            && usize::from(self.variant) < HighlightLook::ALL.len().max(Plate::ALL.len())
     }
 }
 

@@ -80,6 +80,41 @@ fn typed_label_is_drawn_and_exported() {
 }
 
 #[test]
+fn the_look_button_puts_labels_on_plates() {
+    let mut d = doc();
+    let Some(tf) = d.typeface.clone() else {
+        return;
+    };
+    d.set_tool(Tool::Text);
+    assert!(d.cycle_look() && d.cycle_look());
+    d.begin_text(Point::new(20.0, 50.0));
+    d.type_text("Hi");
+    assert!(d.commit_text());
+    let Some(Mark::Label(l)) = d.marks.last() else {
+        panic!("no label")
+    };
+    assert_eq!(l.plate, crate::Plate::Tag);
+    // The tag takes in more than the text, and fills it in red.
+    let plated = l.bounds(&tf);
+    let bare = Label {
+        plate: crate::Plate::Outlined,
+        ..l.clone()
+    }
+    .bounds(&tf);
+    assert!(skia_safe::Contains::contains(&plated, bare) && plated.width() > bare.width());
+    let out = d.export();
+    let (x, y) = ((plated.left + 2.0) as usize, plated.center_y() as usize);
+    let p = &out[(y * 200 + x) * 4..][..4];
+    assert!(p[2] > 150 && p[1] < 100 && p[0] < 100, "tag {p:?}");
+    // Saved and read back, and the button restyles the label just made.
+    let (w, h, px) = d.base_pixels();
+    let (back, _) = Document::from_saved(&d.to_json("x"), w, h, &px).unwrap();
+    assert!(matches!(back.marks.last(), Some(Mark::Label(l)) if l.plate == crate::Plate::Tag));
+    assert!(d.cycle_look());
+    assert!(matches!(d.marks.last(), Some(Mark::Label(l)) if l.plate == crate::Plate::Badge));
+}
+
+#[test]
 fn text_editing_and_undo() {
     let mut d = doc();
     d.begin_text(Point::new(20.0, 50.0));
@@ -157,7 +192,7 @@ fn tools_draw_boxes_and_highlights() {
 fn the_look_button_picks_a_marker_and_it_is_kept() {
     let mut d = doc();
     d.set_tool(Tool::Highlight);
-    assert!(d.cycle_highlight());
+    assert!(d.cycle_look());
     assert!(drag(&mut d, (30.0, 40.0), (180.0, 60.0)));
     let Some(Mark::Highlight(h)) = d.marks.last() else {
         panic!("no highlight")
@@ -177,7 +212,7 @@ fn the_look_button_picks_a_marker_and_it_is_kept() {
     );
     // The other tools have no look button.
     d.set_tool(Tool::Arrow);
-    assert!(!d.cycle_highlight());
+    assert!(!d.cycle_look());
 }
 
 #[test]
@@ -1016,7 +1051,7 @@ fn a_marker_over_a_dark_page_lightens_it() {
         with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
     d.set_modifiers(false, true);
     d.set_tool(Tool::Highlight);
-    assert!(d.cycle_highlight());
+    assert!(d.cycle_look());
     assert!(drag(&mut d, (180.0, 60.0), (30.0, 40.0)));
     let out = d.export();
     // BGRA: yellow ink screened in lifts red and green well above the page.
