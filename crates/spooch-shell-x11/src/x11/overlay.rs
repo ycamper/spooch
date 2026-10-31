@@ -611,7 +611,7 @@ impl App {
             }
             let _ = self.conn.flush();
             system::tell(
-                "Spooch couldn't take the mouse and keyboard: another app is holding                  them, probably an open menu. Close it and try again.",
+                "Another app is holding the mouse, probably an open menu. Close it and try again.",
             );
             return Err(e);
         }
