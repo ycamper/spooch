@@ -108,7 +108,7 @@ pub(super) fn drag_slop() -> (f32, f32) {
 
 /// A WM_MOUSEWHEEL or WM_MOUSEHWHEEL, as `Session::wheel` takes it.
 pub(super) struct Wheel {
-    /// Away from the user, or for a tilt, to the right.
+    /// Notches away from the user; for a tilt, to the right.
     pub notches: f32,
     /// A tilt, or Shift held.
     pub sideways: bool,

@@ -94,7 +94,7 @@ fn the_look_button_puts_labels_on_plates() {
         panic!("no label")
     };
     assert_eq!(l.plate, crate::Plate::Tag);
-    // The tag takes in more than the text, and fills it in red.
+    // The tag is wider than the bare text and filled red.
     let plated = l.bounds(&tf);
     let bare = Label {
         plate: crate::Plate::Outlined,
@@ -106,7 +106,8 @@ fn the_look_button_puts_labels_on_plates() {
     let (x, y) = ((plated.left + 2.0) as usize, plated.center_y() as usize);
     let p = &out[(y * 200 + x) * 4..][..4];
     assert!(p[2] > 150 && p[1] < 100 && p[0] < 100, "tag {p:?}");
-    // Saved and read back, and the button restyles the label just made.
+    // The plate survives saving, and the button restyles the label just
+    // drawn.
     let (w, h, px) = d.base_pixels();
     let (back, _) = Document::from_saved(&d.to_json("x"), w, h, &px).unwrap();
     assert!(matches!(back.marks.last(), Some(Mark::Label(l)) if l.plate == crate::Plate::Tag));
@@ -475,7 +476,7 @@ fn the_wheel_sizes_and_space_moves_the_shape_being_drawn() {
     assert_eq!(d.tool_style().size, before + 1);
     assert!(d.wheel(at, -1.0, false, false));
     assert_eq!(d.tool_style().size, before);
-    // Junk from a shell changes nothing and doesn't stick.
+    // NaN and infinity are ignored; a huge turn just goes to the end.
     assert!(!d.wheel(at, f32::NAN, false, false));
     assert!(!d.wheel(at, f32::INFINITY, false, false));
     assert!(d.wheel(at, -1.0, false, false));

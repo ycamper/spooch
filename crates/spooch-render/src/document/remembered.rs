@@ -126,8 +126,8 @@ impl Styles {
         if let Some(g) = file.gallery {
             self.gallery = g;
         }
-        // Known names, newest first, then the ones they pushed out; each
-        // once.
+        // The file's stickers first (newest first), then today's, with no
+        // repeats, up to `RECENT_STICKERS`.
         let named = file
             .stickers
             .iter()

@@ -156,8 +156,8 @@ enum SavedMark {
         /// Older files have none; they were straight.
         #[serde(default, skip_serializing_if = "is_upright")]
         bend: f32,
-        /// "bubble", "tag" or "badge"; none for outlined text, as older
-        /// files and names this version doesn't know read.
+        /// "bubble", "tag" or "badge". Missing (older files) or unknown
+        /// names mean outlined text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         plate: Option<String>,
     },
