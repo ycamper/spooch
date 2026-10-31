@@ -134,21 +134,6 @@ impl Default for Style {
     }
 }
 
-/// The highlight look a style picks.
-pub(super) fn highlight_of(style: Style) -> HighlightLook {
-    HighlightLook::ALL[usize::from(style.variant) % HighlightLook::ALL.len()]
-}
-
-/// The plate a style puts labels on.
-pub(super) fn plate_of(style: Style) -> Plate {
-    Plate::ALL[usize::from(style.variant) % Plate::ALL.len()]
-}
-
-/// Where `x` is in `all`, as a style index.
-fn index_in<T: PartialEq>(all: &[T], x: &T) -> u8 {
-    all.iter().position(|a| a == x).unwrap_or(0) as u8
-}
-
 /// Which controls the style row shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Row {
@@ -233,8 +218,8 @@ impl Styles {
         self
     }
 
-    /// What the next capture starts with: these styles, with the pinned
-    /// framing back if this one changed it.
+    /// The styles the next capture starts with: these, but with the
+    /// pinned framing if there is one.
     pub fn for_next_capture(mut self) -> Styles {
         if let Some(p) = self.pinned {
             self.framing = p;
@@ -312,11 +297,6 @@ fn nearest(n: usize, fallback: u8, dist: impl Fn(usize) -> f32) -> u8 {
 /// The edge thickness step nearest the multiple `k`.
 fn nearest_edge_width(k: f32) -> u8 {
     nearest(EDGE_WIDTHS.len(), 1, |i| (EDGE_WIDTHS[i] - k).abs())
-}
-
-/// A style's label font.
-pub(super) fn font_of(style: Style) -> LabelFont {
-    LabelFont::ALL[usize::from(style.font) % LabelFont::ALL.len()]
 }
 
 /// The tool that draws marks like `m`.
@@ -519,8 +499,8 @@ impl Document {
             Mark::Oval(o) => full(o.color, nearest_size(o.width, &WIDTHS, s), &o.look),
             Mark::Stroke(p) => full(p.color, nearest_size(p.width, &WIDTHS, s), &p.look),
             Mark::Label(l) => Style {
-                font: index_in(&LabelFont::ALL, &l.font),
-                variant: index_in(&Plate::ALL, &l.plate),
+                font: l.font.index(),
+                variant: l.plate.index(),
                 ..full(l.color, nearest_size(l.size, &TEXT, s), &l.look)
             },
             Mark::Step(p) => full(
@@ -530,7 +510,7 @@ impl Document {
             ),
             Mark::Highlight(h) => Style {
                 color: nearest_colour(&self.palette().colours, h.color),
-                variant: index_in(&HighlightLook::ALL, &h.look),
+                variant: h.look.index(),
                 ..Style::default()
             },
             Mark::Redact(_, Redaction::Blur(level) | Redaction::Pixelate(level)) => Style {
@@ -573,14 +553,14 @@ impl Document {
             Mark::Box(b) => (b.color, b.width, b.look) = (c, w, look),
             Mark::Oval(o) => (o.color, o.width, o.look) = (c, w, look),
             Mark::Stroke(p) => (p.color, p.width, p.look) = (c, w, look),
-            Mark::Highlight(h) => (h.color, h.look) = (c, highlight_of(style)),
+            Mark::Highlight(h) => (h.color, h.look) = (c, HighlightLook::nth(style.variant)),
             Mark::Label(l) => {
                 // Keep the text centred where it was as it grows or shrinks.
                 l.origin += Point::new(0.0, (t - l.size) * 0.35);
                 // The same curve at the new size.
                 l.bend *= l.size / t;
-                (l.color, l.size, l.look, l.font) = (c, t, look, font_of(style));
-                l.plate = plate_of(style);
+                (l.color, l.size, l.look) = (c, t, look);
+                (l.font, l.plate) = (LabelFont::nth(style.font), Plate::nth(style.variant));
             }
             Mark::Step(p) => (p.color, p.radius, p.look) = (c, t * STEP_RADIUS, look),
             Mark::Redact(_, Redaction::Blur(level) | Redaction::Pixelate(level)) => {
@@ -699,15 +679,15 @@ impl Document {
         self.change_style(|s| s.size = stepped(s.size, bigger))
     }
 
-    /// The wheel turned `notches` over the capture: each whole notch steps
-    /// the size as `[` and `]` do, or mid-draw the size of the shape being
+    /// Turn the wheel `notches` over the capture. Each whole notch steps
+    /// the size like `[` and `]`; while drawing, it sizes the shape being
     /// drawn.
     pub(super) fn wheel_size(&mut self, notches: f32) -> bool {
         if !notches.is_finite() {
             return false;
         }
-        // Turning back starts afresh; more steps than there are sizes
-        // change nothing more.
+        // Reversing drops any leftover fraction. The cap bounds the loop;
+        // more steps than there are sizes couldn't change anything.
         if self.wheel_rest * notches < 0.0 {
             self.wheel_rest = 0.0;
         }
@@ -1511,7 +1491,7 @@ mod tests {
             .font
             .expect("text has a font button");
         assert!(!d.begin_drag(skia_safe::Rect::from(button).center()));
-        assert_eq!(font_of(d.tool_style()), LabelFont::Pixel);
+        assert_eq!(LabelFont::nth(d.tool_style().font), LabelFont::Pixel);
         // New labels use it, and it's kept when saved and loaded.
         d.begin_text(Point::new(140.0, 150.0));
         d.type_text("8-bit");

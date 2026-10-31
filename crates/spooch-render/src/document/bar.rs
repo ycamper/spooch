@@ -50,7 +50,8 @@ impl BarMenu {
         }
     }
 
-    /// The row of "Use for every capture": the Frame menu's last.
+    /// The index of the "Use for every capture" row, the Frame menu's
+    /// last; `None` in other menus.
     fn pin_row(self) -> Option<usize> {
         (self == BarMenu::Frame).then(|| super::Frame::all().len())
     }
@@ -78,7 +79,7 @@ pub(super) const TEXT_SIZE: f32 = 12.0;
 const MARGIN: f32 = 8.0;
 /// A row of a bar list.
 const MENU_ROW: f32 = 26.0;
-/// The Frame menu's last row, after the frames.
+/// The label of the Frame menu's last row.
 const PIN: &str = "Use for every capture";
 /// Room for a swatch or tick box before a menu row's name.
 const ROW_MARK: f32 = 22.0;
@@ -604,7 +605,8 @@ mod tests {
         let pin = super::super::Frame::all().len();
         pick(&mut d, pin);
         assert!(d.look_pinned());
-        // Another frame on this capture only: the next starts pinned.
+        // A different frame lasts for this capture only; the next starts
+        // with the pinned one.
         pick(&mut d, 0);
         assert!(!d.look_pinned());
         let next = d.styles().for_next_capture();

@@ -186,8 +186,8 @@ impl Document {
         self.styles.pinned == Some(self.styles.framing)
     }
 
-    /// Make this frame, colour and shadow what every capture starts with,
-    /// or, if they already are, go back to starting with the last.
+    /// Pin this frame, colour and shadow for every capture, or unpin them
+    /// if they already are.
     pub(crate) fn toggle_pin(&mut self) {
         self.styles.pinned = if self.look_pinned() {
             None

@@ -223,7 +223,7 @@ impl Document {
         let space = self.space;
         match self.gesture.as_mut() {
             Some(Gesture::Draw { drag, path, .. }) if drag.to != p => {
-                // Space held moves the shape so far along with the pointer.
+                // With Space held, the shape so far follows the pointer.
                 if space {
                     let by = p - drag.to;
                     drag.from += by;
@@ -458,7 +458,7 @@ impl Document {
             Tool::Highlight if big => Some(Mark::Highlight(Highlight {
                 rect,
                 color,
-                look: style::highlight_of(style),
+                look: crate::HighlightLook::nth(style.variant),
             })),
             Tool::Blur if big => Some(Mark::Redact(rect, Redaction::Blur(style.size))),
             Tool::Pixelate if big => Some(Mark::Redact(rect, Redaction::Pixelate(style.size))),

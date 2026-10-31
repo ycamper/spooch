@@ -18,9 +18,9 @@ impl Document {
             size,
             look: self.look_of(style),
             angle: 0.0,
-            font: style::font_of(style),
+            font: crate::LabelFont::nth(style.font),
             bend: 0.0,
-            plate: style::plate_of(style),
+            plate: crate::Plate::nth(style.variant),
         });
         self.caret = crate::Caret::default();
         self.fresh = false;

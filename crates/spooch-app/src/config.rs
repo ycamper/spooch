@@ -59,8 +59,8 @@ impl Config {
         Ok(self.apply(settings, problems, styles))
     }
 
-    /// `load` at startup: the defaults when the file can't be read, and
-    /// the picks kept from the last run on top.
+    /// `load` for startup: the defaults if the file can't be read, then
+    /// the picks saved by the last run.
     pub fn load_or_default(&self, styles: Styles) -> Loaded {
         let mut loaded = self.load(styles).unwrap_or_else(|e| {
             log::line(format!("could not read settings, using defaults: {e}"));

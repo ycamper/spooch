@@ -10,7 +10,7 @@ use skia_safe::{
 
 use super::*;
 use crate::document::bar::BarLayout;
-use crate::document::style::{self, PALETTES, SIZES};
+use crate::document::style::{PALETTES, SIZES};
 use crate::document::theme::{
     ACTIVE, FIELD, HOVER, ICON, PANEL, PANEL_EDGE, TEXT, WHITE, centred_baseline, chevron,
     draw_list, fill_rrect, rounded_panel,
@@ -307,9 +307,9 @@ impl Document {
                     12.0 * s,
                 );
                 if self.shows_highlight() {
-                    highlight_icon(canvas, icon, style::highlight_of(st), colour, s);
+                    highlight_icon(canvas, icon, HighlightLook::nth(st.variant), colour, s);
                 } else {
-                    plate_icon(canvas, icon, style::plate_of(st), colour, s);
+                    plate_icon(canvas, icon, crate::Plate::nth(st.variant), colour, s);
                 }
             }
             if let (Some(last), true) = (
@@ -423,7 +423,7 @@ impl Document {
                     let p = fill(HOVER);
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 6.0 * s, 6.0 * s), &p);
                 }
-                if let Some(tf) = crate::document::style::font_of(st).typeface() {
+                if let Some(tf) = LabelFont::nth(st.font).typeface() {
                     let font = Font::from_typeface(tf, 15.0 * s);
                     let (w, bounds) = font.measure_str("Aa", None);
                     let p = fill(ICON);
@@ -515,7 +515,7 @@ impl Document {
                 Some(Hit::FontOption(i)) => Some(i),
                 _ => None,
             };
-            let at = LabelFont::ALL.iter().position(|f| *f == current);
+            let at = Some(usize::from(current.index()));
             panels.push(panel(list, |canvas| {
                 draw_list(
                     canvas,
@@ -597,18 +597,15 @@ impl Document {
             Hit::StickerOption(i) => crate::sticker::sticker_title(crate::STICKERS.get(i)?.0),
             Hit::Look => {
                 let (style, _) = self.shown_style()?;
-                let next = Style {
-                    variant: style.variant.wrapping_add(1),
-                    ..style
-                };
-                let name = |st| {
+                let name = |v: u8| {
                     if self.shows_highlight() {
-                        style::highlight_of(st).name()
+                        HighlightLook::nth(v).name()
                     } else {
-                        style::plate_of(st).name()
+                        crate::Plate::nth(v).name()
                     }
                 };
-                format!("{}   click for {}", name(style), name(next))
+                let v = style.variant;
+                format!("{}   click for {}", name(v), name(v.wrapping_add(1)))
             }
             Hit::Slider(slider) => {
                 let (style, _) = self.shown_style()?;
@@ -635,7 +632,7 @@ impl Document {
                 let (style, _) = self.shown_style()?;
                 format!(
                     "Font: {}   click to change",
-                    crate::document::style::font_of(style).name()
+                    LabelFont::nth(style.font).name()
                 )
             }
             Hit::MoveTab => "Drag to move the selection, Shift+drag to bring the marks".to_string(),

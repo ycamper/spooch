@@ -6,6 +6,7 @@
 
 pub use skia_safe;
 
+mod choices;
 mod curve;
 mod document;
 mod select;
@@ -324,51 +325,26 @@ pub struct Label {
     /// straight, positive bends the middle down (a smile), negative up (a
     /// rainbow). Bent lines are centred on the first line's middle.
     pub bend: f32,
-    /// What the text sits on. Bent labels sit on nothing.
+    /// What the text sits on. Bent labels are drawn without it.
     pub plate: Plate,
 }
 
-/// What a label sits on.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Plate {
-    /// Nothing: the text has an edge, like the other marks.
-    #[default]
-    Outlined,
-    /// A white rounded box.
-    Bubble,
-    /// A box in the label's colour.
-    Tag,
-    /// A dark plate.
-    Badge,
+choices::choices! {
+    /// What a label sits on.
+    pub enum Plate {
+        /// Nothing: the text has an edge, like the other marks.
+        #[default]
+        Outlined => ("Outlined", "outlined"),
+        /// A white rounded box.
+        Bubble => ("Bubble", "bubble"),
+        /// A box in the label's colour.
+        Tag => ("Tag", "tag"),
+        /// A dark plate.
+        Badge => ("Badge", "badge"),
+    }
 }
 
 impl Plate {
-    /// Every plate, in the order the look button steps through them.
-    pub const ALL: [Plate; 4] = [Plate::Outlined, Plate::Bubble, Plate::Tag, Plate::Badge];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Plate::Outlined => "Outlined",
-            Plate::Bubble => "Bubble",
-            Plate::Tag => "Tag",
-            Plate::Badge => "Badge",
-        }
-    }
-
-    /// The name saved files use.
-    pub fn key(self) -> &'static str {
-        match self {
-            Plate::Outlined => "outlined",
-            Plate::Bubble => "bubble",
-            Plate::Tag => "tag",
-            Plate::Badge => "badge",
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<Plate> {
-        Self::ALL.into_iter().find(|p| p.key() == key)
-    }
-
     /// The plate's colour and the text's on it, for a label in `colour`;
     /// `None` for no plate. The text turns black or white wherever its own
     /// colour wouldn't read.
@@ -401,54 +377,23 @@ fn luminance(c: Color4f) -> f32 {
     0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
 }
 
-/// The fonts labels can use, all bundled (SIL Open Font License, see
-/// `fonts/OFL-*.txt`) so labels look the same on every platform.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LabelFont {
-    /// Nunito Black: heavy and rounded, like Skitch's labels.
-    #[default]
-    Rounded,
-    /// Pixelify Sans Bold: a scalable pixel-art font.
-    Pixel,
-    /// Tiny5: a minimal pixel font on a five-pixel grid.
-    Tiny,
-    /// Anton: tall and condensed, like Impact, for memes.
-    Impact,
+choices::choices! {
+    /// The fonts labels can use, all bundled (SIL Open Font License, see
+    /// `fonts/OFL-*.txt`) so labels look the same on every platform.
+    pub enum LabelFont {
+        /// Nunito Black: heavy and rounded, like Skitch's labels.
+        #[default]
+        Rounded => ("Nunito", "rounded"),
+        /// Pixelify Sans Bold: a scalable pixel-art font.
+        Pixel => ("Pixelify Sans", "pixel"),
+        /// Tiny5: a minimal pixel font on a five-pixel grid.
+        Tiny => ("Tiny5", "tiny"),
+        /// Anton: tall and condensed, like Impact, for memes.
+        Impact => ("Anton", "impact"),
+    }
 }
 
 impl LabelFont {
-    /// Every font, in the order the font button steps through them.
-    pub const ALL: [LabelFont; 4] = [
-        LabelFont::Rounded,
-        LabelFont::Pixel,
-        LabelFont::Tiny,
-        LabelFont::Impact,
-    ];
-
-    /// The font's name, for the tooltip.
-    pub fn name(self) -> &'static str {
-        match self {
-            LabelFont::Rounded => "Nunito",
-            LabelFont::Pixel => "Pixelify Sans",
-            LabelFont::Tiny => "Tiny5",
-            LabelFont::Impact => "Anton",
-        }
-    }
-
-    /// How saved documents name it.
-    pub fn key(self) -> &'static str {
-        match self {
-            LabelFont::Rounded => "rounded",
-            LabelFont::Pixel => "pixel",
-            LabelFont::Tiny => "tiny",
-            LabelFont::Impact => "impact",
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<LabelFont> {
-        LabelFont::ALL.into_iter().find(|f| f.key() == key)
-    }
-
     /// The typeface, made once per thread.
     pub fn typeface(self) -> Option<Typeface> {
         match self {
@@ -1336,52 +1281,20 @@ impl Step {
     }
 }
 
-/// How a highlight shows what it's over.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum HighlightLook {
-    /// Everything else dims and goes grey; the area stays as it was,
-    /// lifted with a soft shadow and a ring in the colour.
-    #[default]
-    Spotlight,
-    /// A highlighter pen dragged across: see-through ink, chisel-cut
-    /// ends, streaks, and ink pooled where it landed and lifted.
-    Marker,
-    /// A bold band of colour behind the lower half of the words.
-    Band,
-    /// A glowing rounded outline, faintly tinted inside.
-    Neon,
-}
-
-impl HighlightLook {
-    /// Every look, in the order the look button steps through them.
-    pub const ALL: [HighlightLook; 4] = [
-        HighlightLook::Spotlight,
-        HighlightLook::Marker,
-        HighlightLook::Band,
-        HighlightLook::Neon,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            HighlightLook::Spotlight => "Spotlight",
-            HighlightLook::Marker => "Marker",
-            HighlightLook::Band => "Band",
-            HighlightLook::Neon => "Neon",
-        }
-    }
-
-    /// The name saved files use.
-    pub fn key(self) -> &'static str {
-        match self {
-            HighlightLook::Spotlight => "spotlight",
-            HighlightLook::Marker => "marker",
-            HighlightLook::Band => "band",
-            HighlightLook::Neon => "neon",
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<HighlightLook> {
-        Self::ALL.into_iter().find(|l| l.key() == key)
+choices::choices! {
+    /// How a highlight shows what it's over.
+    pub enum HighlightLook {
+        /// Everything else dims and goes grey; the area stays as it was,
+        /// lifted with a soft shadow and a ring in the colour.
+        #[default]
+        Spotlight => ("Spotlight", "spotlight"),
+        /// A highlighter pen dragged across: see-through ink, chisel-cut
+        /// ends, streaks, and ink pooled where it landed and lifted.
+        Marker => ("Marker", "marker"),
+        /// A bold band of colour behind the lower half of the words.
+        Band => ("Band", "band"),
+        /// A glowing rounded outline, faintly tinted inside.
+        Neon => ("Neon", "neon"),
     }
 }
 
