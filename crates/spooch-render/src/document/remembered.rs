@@ -1,6 +1,6 @@
 //! The styles as a small JSON file, so the last picks survive a restart:
-//! each tool's style, the frame, its colour and shadow, the gallery, the
-//! recent stickers and the format. Frames are kept by key and stickers by
+//! each tool's style, the frame, its colour and shadow, the pinned ones,
+//! the gallery, the recent stickers and the format. Frames are kept by key and stickers by
 //! name, so new built-ins don't shift them; anything unknown or out of
 //! range keeps what it was. The palette isn't kept: `settings.txt` picks
 //! the starting one.
@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::frame::{FRAME_COLOURS, Frame, SHADOWS};
 use super::style::{
-    EDGE_WIDTHS, EDGES, MIN_OPACITY, PALETTE, RECENT_STICKERS, SIZES, Style, Styles, tool_index,
+    EDGE_WIDTHS, EDGES, MIN_OPACITY, PALETTE, Pinned, RECENT_STICKERS, SIZES, Style, Styles,
+    tool_index,
 };
 use super::{Format, Tool};
 use crate::{HighlightLook, LabelFont, STICKERS};
@@ -25,11 +26,50 @@ struct Remembered {
     frame: Option<String>,
     frame_colour: u8,
     shadow: u8,
+    /// "Use for every capture".
+    pinned: Option<Look>,
     gallery: Option<bool>,
     /// Names, newest first.
     stickers: Vec<String>,
     /// "png" or "jpg".
     format: Option<String>,
+}
+
+/// A frame, its colour and shadow.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(default)]
+struct Look {
+    /// A frame key; `None` for no frame.
+    frame: Option<String>,
+    frame_colour: u8,
+    shadow: u8,
+}
+
+impl From<Pinned> for Look {
+    fn from(p: Pinned) -> Self {
+        Look {
+            frame: (p.frame != Frame::NONE).then(|| p.frame.key()),
+            frame_colour: p.frame_colour,
+            shadow: p.shadow,
+        }
+    }
+}
+
+impl Look {
+    /// As a pin, or `None` if its frame is gone or anything's out of range.
+    fn pinned(&self) -> Option<Pinned> {
+        let frame = match &self.frame {
+            None => Frame::NONE,
+            Some(key) => Frame::from_key(key)?,
+        };
+        (usize::from(self.frame_colour) < FRAME_COLOURS.len()
+            && usize::from(self.shadow) < SHADOWS.len())
+        .then_some(Pinned {
+            frame,
+            frame_colour: self.frame_colour,
+            shadow: self.shadow,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +140,7 @@ impl Styles {
             frame: (self.frame != Frame::NONE).then(|| self.frame.key()),
             frame_colour: self.frame_colour,
             shadow: self.shadow,
+            pinned: self.pinned.map(Look::from),
             gallery: Some(self.gallery),
             stickers: self
                 .stickers
@@ -140,6 +181,7 @@ impl Styles {
         if usize::from(file.shadow) < SHADOWS.len() {
             self.shadow = file.shadow;
         }
+        self.pinned = file.pinned.as_ref().and_then(Look::pinned);
         if let Some(g) = file.gallery {
             self.gallery = g;
         }
@@ -186,6 +228,7 @@ mod tests {
         styles.shadow = 2;
         styles.gallery = false;
         styles.stickers[0] = STICKERS.len() as u8 - 1;
+        styles.pinned = Some(styles.look());
         let json = styles.remembered(Format::Jpeg);
         let (back, format) = Styles::default().with_remembered(&json).unwrap();
         assert_eq!(back, styles);
@@ -198,6 +241,7 @@ mod tests {
             "tools": {"box": {"color": 99}, "laser": {"color": 1}, "arrow": {"color": 3}},
             "frame": "file:gone",
             "shadow": 200,
+            "pinned": {"frame": "file:gone"},
             "stickers": ["not_a_sticker", "fire"],
             "format": "gif",
             "from_the_future": true
@@ -210,6 +254,7 @@ mod tests {
         );
         assert_eq!(back.tools[tool_index(Tool::Arrow)].color, 3);
         assert_eq!((back.frame, back.shadow), (base.frame, base.shadow));
+        assert_eq!(back.pinned, None);
         // Fire moves to the front; the rest follow in their old order.
         let fire = STICKERS.iter().position(|(n, _)| *n == "fire").unwrap() as u8;
         assert_eq!(back.stickers[0], fire);

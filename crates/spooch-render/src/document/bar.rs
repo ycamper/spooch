@@ -8,8 +8,8 @@ use skia_safe::{Font, IRect, Paint, Point, RRect, Rect};
 use super::Document;
 use super::chrome::{Panel, contains, panel};
 use super::theme::{
-    BUTTON, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron, draw_list, ellipsize,
-    rounded_panel, swatch,
+    BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron, draw_list, ellipsize,
+    rounded_panel, swatch, tick_box,
 };
 
 /// Something on the bar.
@@ -73,6 +73,8 @@ pub(super) const TEXT_SIZE: f32 = 12.0;
 const MARGIN: f32 = 8.0;
 /// A row of a bar list.
 const MENU_ROW: f32 = 26.0;
+/// The Frame menu's last row, after the frames.
+const PIN: &str = "Use for every capture";
 
 /// Where the bar and its items sit.
 pub(super) struct BarLayout {
@@ -266,17 +268,15 @@ impl Document {
         let (_, button, _) = bar.items.iter().find(|(i, ..)| *i == menu.button())?;
         let font = self.bar_font();
         let names = self.menu_names(menu);
-        // Colours get a swatch before the name.
-        let swatch = if menu == BarMenu::Colour {
-            22.0 * s
-        } else {
-            0.0
-        };
+        // Colours get a swatch before the name, and the pin a tick box.
         let w = names
             .iter()
-            .map(|name| self.text_width(font.as_ref(), name))
+            .map(|name| {
+                let mark = menu == BarMenu::Colour || name == PIN;
+                self.text_width(font.as_ref(), name) + if mark { 22.0 * s } else { 0.0 }
+            })
             .fold(0.0f32, f32::max);
-        let w = ((w + swatch + 28.0 * s).ceil() as i32).max(button.width());
+        let w = ((w + 28.0 * s).ceil() as i32).max(button.width());
         let row = (MENU_ROW * s).round() as i32;
         let pad = (4.0 * s).round() as i32;
         let n = names.len() as i32;
@@ -300,7 +300,11 @@ impl Document {
     /// Each row's name in `menu`.
     fn menu_names(&self, menu: BarMenu) -> Vec<String> {
         match menu {
-            BarMenu::Frame => super::Frame::all().into_iter().map(|(_, n)| n).collect(),
+            BarMenu::Frame => super::Frame::all()
+                .into_iter()
+                .map(|(_, n)| n)
+                .chain([PIN.to_string()])
+                .collect(),
             BarMenu::Colour => super::FRAME_COLOURS
                 .iter()
                 .map(|(n, _)| n.to_string())
@@ -323,8 +327,11 @@ impl Document {
     pub(super) fn pick_menu(&mut self, i: usize) {
         match self.bar_menu {
             Some(BarMenu::Frame) => {
-                if let Some((f, _)) = super::Frame::all().get(i) {
-                    self.set_frame(*f);
+                let frames = super::Frame::all();
+                match frames.get(i) {
+                    Some((f, _)) => self.set_frame(*f),
+                    None if i == frames.len() => self.toggle_pin(),
+                    None => {}
                 }
             }
             Some(BarMenu::Colour) => self.set_frame_colour(i as u8),
@@ -351,7 +358,7 @@ impl Document {
     }
 
     /// The open menu's panel: each row's name (a colour's swatch first),
-    /// the one in use marked.
+    /// the one in use marked, and under the frames the pin's tick box.
     pub(super) fn draw_bar_menu(
         &self,
         menu: BarMenu,
@@ -373,9 +380,17 @@ impl Document {
                 s,
                 |i, rect, on| {
                     let mut text_x = rect.left + 10.0 * s;
+                    let mut on = on;
+                    let mark = Point::new(rect.left + 17.0 * s, rect.center_y());
                     if menu == BarMenu::Colour {
-                        let c = Point::new(rect.left + 17.0 * s, rect.center_y());
-                        swatch(canvas, c, 7.0 * s, self.frame_colour_shown(i as u8), s);
+                        swatch(canvas, mark, 7.0 * s, self.frame_colour_shown(i as u8), s);
+                        text_x += 22.0 * s;
+                    } else if names.get(i).is_some_and(|n| n == PIN) {
+                        let y = rect.top + 0.5 * s;
+                        let line = super::theme::stroke(DIVIDER, s);
+                        canvas.draw_line((rect.left, y), (rect.right, y), &line);
+                        tick_box(canvas, mark, self.look_pinned(), s);
+                        on = self.look_pinned();
                         text_x += 22.0 * s;
                     }
                     if let (Some(font), Some(name)) = (&font, names.get(i)) {
@@ -562,6 +577,36 @@ mod tests {
         assert_eq!(d.cursor_at(name), Cursor::Arrow);
         assert!(!d.begin_drag(name));
         assert_eq!(d.take_action(), None);
+    }
+
+    #[test]
+    fn the_frame_menu_pins_the_look_for_every_capture() {
+        let (mut d, _) = placed();
+        d.set_screens(vec![IRect::from_ltrb(0, 0, 1000, 800)]);
+        let terminal = super::super::Frame::builtin("terminal-modern");
+        d.set_frame(terminal);
+        d.set_shadow(2);
+        // The pin is the row after the frames.
+        let pick = |d: &mut Document, row: usize| {
+            d.begin_drag(centre(item(d, BarItem::Frame)));
+            let (_, _, rows) = d.bar_menu_layout(&d.bar_layout()).unwrap();
+            assert_eq!(rows.len(), super::super::Frame::all().len() + 1);
+            d.begin_drag(centre(rows[row]));
+        };
+        let pin = super::super::Frame::all().len();
+        pick(&mut d, pin);
+        assert!(d.look_pinned());
+        // Another frame on this capture only: the next starts pinned.
+        pick(&mut d, 0);
+        assert!(!d.look_pinned());
+        let next = d.styles().for_next_capture();
+        assert_eq!((next.frame, next.shadow), (terminal, 2));
+        // Unticking goes back to starting with the last pick.
+        d.set_styles(next);
+        pick(&mut d, pin);
+        assert!(!d.look_pinned());
+        d.set_shadow(0);
+        assert_eq!(d.styles().for_next_capture().shadow, 0);
     }
 
     #[test]

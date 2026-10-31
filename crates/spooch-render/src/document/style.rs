@@ -185,6 +185,17 @@ pub struct Styles {
     /// The stickers picked lately, newest first, into `STICKERS`; the
     /// first is the one the tool stamps.
     pub(super) stickers: [u8; RECENT_STICKERS],
+    /// The frame, colour and shadow every capture starts with, ticked in
+    /// the Frame menu. Without one, each capture starts with the last.
+    pub(super) pinned: Option<Pinned>,
+}
+
+/// The output's look as "Use for every capture" keeps it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Pinned {
+    pub frame: Frame,
+    pub frame_colour: u8,
+    pub shadow: u8,
 }
 
 impl Default for Styles {
@@ -200,6 +211,7 @@ impl Default for Styles {
             gallery: true,
             stickers: FIRST_STICKERS
                 .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
+            pinned: None,
         }
     }
 }
@@ -210,6 +222,26 @@ impl Styles {
     pub fn with_palette(mut self, index: usize) -> Styles {
         self.palette = index.min(PALETTES.len() - 1) as u8;
         self
+    }
+
+    /// What the next capture starts with: these styles, with the pinned
+    /// frame, colour and shadow back if this one changed them.
+    pub fn for_next_capture(mut self) -> Styles {
+        if let Some(p) = self.pinned {
+            self.frame = p.frame;
+            self.frame_colour = p.frame_colour;
+            self.shadow = p.shadow;
+        }
+        self
+    }
+
+    /// The frame, colour and shadow in use, as a pin.
+    pub(super) fn look(&self) -> Pinned {
+        Pinned {
+            frame: self.frame,
+            frame_colour: self.frame_colour,
+            shadow: self.shadow,
+        }
     }
 }
 
