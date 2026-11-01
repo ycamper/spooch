@@ -257,19 +257,12 @@ mod tests {
 
     #[test]
     fn xft_dpi_sets_the_scale() {
-        assert_eq!(
-            xft_scale(
-                b"Xft.antialias:	1
-Xft.dpi:	192
-"
-            ),
-            2.0
-        );
+        assert_eq!(xft_scale(b"Xft.antialias:\t1\nXft.dpi:\t192\n"), 2.0);
         assert_eq!(xft_scale(b"Xft.dpi: 144"), 1.5);
         assert_eq!(xft_scale(b""), 1.0);
-        assert_eq!(xft_scale(b"Xft.dpi:	lots"), 1.0);
-        assert_eq!(xft_scale(b"Xft.dpi:	72"), 1.0);
-        assert_eq!(xft_scale(b"Xft.dpi:	9999"), 4.0);
-        assert_eq!(xft_scale(b"Xft.dpi:	NaN"), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:\tlots"), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:\t72"), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:\t9999"), 4.0);
+        assert_eq!(xft_scale(b"Xft.dpi:\tNaN"), 1.0);
     }
 }
