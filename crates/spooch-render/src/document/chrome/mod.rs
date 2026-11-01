@@ -379,6 +379,36 @@ impl Document {
         }
     }
 
+    /// How far across a floating panel in rows `band` (top, bottom) can
+    /// go: the screen, less the rail's side when they'd share rows.
+    pub(super) fn panel_span(&self, band: (i32, i32)) -> (i32, i32) {
+        let screen = self.screen();
+        let rail = self.rail_layout().rect;
+        let m = (MARGIN * self.scale).round() as i32;
+        let (mut lo, mut hi) = (screen.left, screen.right);
+        if rail.top < band.1 && rail.bottom > band.0 {
+            if rail.left + rail.right <= self.canvas.left + self.canvas.right {
+                lo = lo.max(rail.right + m);
+            } else {
+                hi = hi.min(rail.left - m);
+            }
+        }
+        (lo, hi)
+    }
+
+    /// Where a floating panel `w` wide in rows `band` goes across: lined up
+    /// with the canvas's left edge, slid to stay on the screen, and clear
+    /// of the rail when there's room. Panels keep their order and shape
+    /// wherever the selection is, so they can be learned.
+    pub(super) fn panel_x(&self, w: i32, band: (i32, i32)) -> i32 {
+        let (mut lo, mut hi) = self.panel_span(band);
+        if hi - lo < w {
+            let screen = self.screen();
+            (lo, hi) = (screen.left, screen.right);
+        }
+        self.canvas.left.min(hi - w).max(lo)
+    }
+
     /// The style row above the canvas, or `None` when what's on show has
     /// no style (solid redact). Most marks get colours, a size slider, an
     /// opacity slider and an edge button; the highlighter colours only;
@@ -436,19 +466,13 @@ impl Document {
         let margin = (MARGIN * s).round() as i32;
         let screen = self.screen();
         let c = self.canvas;
-        // Above the canvas, else just inside its top, clear of a rail that
-        // had to go inside too.
-        let rail = self.rail_layout().rect;
-        let mut x = c.left;
+        // Above the canvas, else just inside its top.
         let y = if c.top - margin - h >= screen.top {
             c.top - margin - h
         } else {
-            if rail.left < c.right && rail.right > c.left {
-                x = rail.right + margin;
-            }
             c.top + margin
         };
-        let x = x.min(screen.right - w).max(screen.left);
+        let x = self.panel_x(w, (y, y + h));
         let mut rect = IRect::from_xywh(x, y, w, h);
         // In the window, docked under the top row.
         let (x, y) = match self.dock() {
