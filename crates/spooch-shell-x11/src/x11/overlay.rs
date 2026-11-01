@@ -141,8 +141,10 @@ impl App {
     pub(super) fn button_press(&mut self, e: ButtonPressEvent) {
         let p = (i32::from(e.event_x), i32::from(e.event_y));
         if e.detail == 3 {
-            if self.session.is_some() {
-                self.end(Done::Cancelled, e.time);
+            let Some(s) = &mut self.session else { return };
+            match s.editor.as_mut().map(|ed| ed.right_click()) {
+                Some(r) => self.carry_out(r.effects, e.time),
+                None => self.end(Done::Cancelled, e.time),
             }
             return;
         }
@@ -365,13 +367,13 @@ impl App {
         d: Deliverable,
         time: Timestamp,
         mark: &mut dyn FnMut(String),
-    ) {
+    ) -> &'static str {
         let (conn, clipboard) = (&self.conn, &mut self.clipboard);
         d.deliver(
             |c| clipboard.set_image(conn, c.png, time),
             || Ok(save::folder()),
             mark,
-        );
+        )
     }
 
     /// Put a share's link on the clipboard.
@@ -526,6 +528,8 @@ impl App {
         if self.session.is_some() {
             return;
         }
+        // Off the screen before it's captured.
+        self.hide_toast();
         let mut sw = Stopwatch::start();
         match self.open_session(&mut sw) {
             Ok(mut session) => {
@@ -540,7 +544,7 @@ impl App {
 
     /// The desktop's scale, from `Xft.dpi` in the root's resources, which
     /// GNOME, KDE and Xfce set for HiDPI.
-    fn desktop_scale(&self) -> f32 {
+    pub(super) fn desktop_scale(&self) -> f32 {
         // At most 64 KiB, in 32-bit units.
         let resources = self
             .conn
@@ -819,6 +823,7 @@ impl App {
             Done::Cancelled | Done::Window => None,
         };
         let to_window = matches!(done, Done::Window);
+        let mut said = None;
         match done {
             Done::Cancelled => log::line("cancelled"),
             Done::Window => log::line("to the editor window"),
@@ -838,7 +843,7 @@ impl App {
                         {
                             log::line(format!("save {path} failed: {e}"));
                         }
-                        self.deliver(d, time, &mut |line| sw.mark(line));
+                        said = Some((self.deliver(d, time, &mut |line| sw.mark(line)), r));
                         sw.report(&format!("copied region at ({}, {})", r.x, r.y));
                     }
                     Err(e) => log::line(format!("encoding failed: {e}")),
@@ -846,6 +851,9 @@ impl App {
             }
         }
         drop(s);
+        if let Some((text, r)) = said {
+            self.show_toast(text, r.irect());
+        }
         self.transfer.release(&self.conn);
         // Hand the editor's freed buffers back to the system so an idle
         // Spooch stays small.

@@ -31,7 +31,6 @@ struct Remembered {
     pinned: Option<FramingFile>,
     gallery: Option<bool>,
     /// Whether the style row shows opacity and the edge.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     extras: Option<bool>,
     /// Names, newest first.
     stickers: Vec<String>,
