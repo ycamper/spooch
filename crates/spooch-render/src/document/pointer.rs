@@ -489,36 +489,31 @@ impl Document {
                     })
                 })
             }
-            // A click stamps a sticker there; a drag sizes it, square, from
-            // the press.
+            // A click stamps a sticker there; a drag sizes it from the
+            // press. Either way it keeps its shape (stamps are wide), and a
+            // stamp leans a little.
             Tool::Sticker => {
+                let name = self.sticker();
                 let d2 = d.to - d.from;
                 let side = d2.x.abs().max(d2.y.abs());
                 let rect = if side < STICKER_DRAG_PX * self.scale {
-                    let half = STICKER_PX * self.scale / 2.0;
-                    Rect::from_ltrb(
-                        d.from.x - half,
-                        d.from.y - half,
-                        d.from.x + half,
-                        d.from.y + half,
-                    )
+                    let (w, h) = crate::sticker::clicked_size(name, STICKER_PX * self.scale);
+                    Rect::from_xywh(d.from.x - w / 2.0, d.from.y - h / 2.0, w, h)
                 } else {
-                    let x = if d2.x < 0.0 {
-                        d.from.x - side
-                    } else {
-                        d.from.x
-                    };
-                    let y = if d2.y < 0.0 {
-                        d.from.y - side
-                    } else {
-                        d.from.y
-                    };
-                    Rect::from_xywh(x, y, side, side)
+                    let (w, h) = crate::sticker::sticker_size(name, side);
+                    let x = if d2.x < 0.0 { d.from.x - w } else { d.from.x };
+                    let y = if d2.y < 0.0 { d.from.y - h } else { d.from.y };
+                    Rect::from_xywh(x, y, w, h)
                 };
+                let stamp = matches!(crate::sticker::art_of(name), Some(crate::Art::Stamp(..)));
                 Some(Mark::Sticker(crate::Sticker {
                     rect,
-                    name: self.sticker(),
-                    angle: 0.0,
+                    name,
+                    angle: if stamp {
+                        crate::sticker::STAMP_TILT
+                    } else {
+                        0.0
+                    },
                 }))
             }
             // A step goes where the press was, whether or not it moved.

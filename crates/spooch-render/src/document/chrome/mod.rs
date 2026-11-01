@@ -476,18 +476,32 @@ impl Document {
 
     /// The grid of every sticker, open under the style row (above it when
     /// there's no room below), and each sticker's cell, in `STICKERS`
-    /// order.
+    /// order. Each kind (emoji, stamps, pointers) starts a row, and a stamp
+    /// takes several cells across.
     pub(super) fn sticker_grid(&self) -> Option<(IRect, Vec<IRect>)> {
         if !self.sticker_menu {
             return None;
         }
         let row = self.row_layout().filter(|r| r.more.is_some())?;
         let s = self.scale;
-        let n = crate::STICKERS.len();
-        let rows = n.div_ceil(STICKER_COLUMNS);
+        // Each sticker's column, row and width in cells.
+        let mut spots = Vec::with_capacity(crate::STICKERS.len());
+        let (mut c, mut r) = (0, 0);
+        let mut kind = None;
+        for (_, art) in crate::STICKERS {
+            let span = art.cells();
+            let k = std::mem::discriminant(art);
+            if c > 0 && (kind != Some(k) || c + span > STICKER_COLUMNS) {
+                (c, r) = (0, r + 1);
+            }
+            spots.push((c as i32, r, span as i32));
+            c += span;
+            kind = Some(k);
+        }
+        let rows = r + 1;
         let (cell, pad) = ((STICKER_CELL * s).round() as i32, (6.0 * s).round() as i32);
         let w = STICKER_COLUMNS as i32 * cell + 2 * pad;
-        let h = rows as i32 * cell + 2 * pad;
+        let h = rows * cell + 2 * pad;
         let screen = self.screen();
         let gap = (4.0 * s).round() as i32;
         let below = row.rect.bottom + gap;
@@ -498,10 +512,15 @@ impl Document {
         };
         let left = row.rect.left.min(screen.right - w).max(screen.left);
         let grid = IRect::from_xywh(left, top, w, h);
-        let cells = (0..n)
-            .map(|i| {
-                let (c, r) = ((i % STICKER_COLUMNS) as i32, (i / STICKER_COLUMNS) as i32);
-                IRect::from_xywh(left + pad + c * cell, top + pad + r * cell, cell, cell)
+        let cells = spots
+            .into_iter()
+            .map(|(c, r, span)| {
+                IRect::from_xywh(
+                    left + pad + c * cell,
+                    top + pad + r * cell,
+                    span * cell,
+                    cell,
+                )
             })
             .collect();
         Some((grid, cells))

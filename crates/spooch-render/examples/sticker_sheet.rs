@@ -38,21 +38,31 @@ fn main() {
         d.begin_drag(Point::new(x, y));
         d.end_drag();
     };
-    click(&mut d, 300.0, 300.0);
-    let rocket = spooch_render::STICKERS
-        .iter()
-        .position(|(n, _)| *n == "rocket")
-        .unwrap();
-    d.pick_sticker(rocket);
-    d.begin_drag(Point::new(560.0, 220.0));
-    d.drag_to(Point::new(700.0, 300.0));
+    let pick = |d: &mut Document, name: &str| {
+        let i = spooch_render::STICKERS
+            .iter()
+            .position(|(n, _)| *n == name)
+            .unwrap();
+        d.pick_sticker(i);
+    };
+    click(&mut d, 240.0, 260.0);
+    pick(&mut d, "rocket");
+    d.begin_drag(Point::new(330.0, 200.0));
+    d.drag_to(Point::new(430.0, 300.0));
     d.end_drag();
-    let fire = spooch_render::STICKERS
-        .iter()
-        .position(|(n, _)| *n == "fire")
-        .unwrap();
-    d.pick_sticker(fire);
-    click(&mut d, 860.0, 520.0);
+    // Stamps lean and wear; pointers are drawn, so they stay sharp.
+    for (name, x, y) in [
+        ("stamp_approved", 600.0, 250.0),
+        ("stamp_ship_it", 860.0, 300.0),
+        ("stamp_bug", 330.0, 590.0),
+        ("pointer_click", 520.0, 470.0),
+        ("pointer_hand", 800.0, 470.0),
+        ("pointer_text", 950.0, 560.0),
+        ("pointer_arrow", 640.0, 590.0),
+    ] {
+        pick(&mut d, name);
+        click(&mut d, x, y);
+    }
 
     // Open the grid: its button is after the ten recent stickers.
     let row = d.chrome().to_vec()[1].rect;

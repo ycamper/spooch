@@ -246,7 +246,7 @@ impl Document {
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 6.0 * s, 6.0 * s), &p);
                 }
                 let name = self.recent_stickers()[i];
-                crate::sticker::draw_sticker_image(
+                crate::sticker::draw_sticker(
                     canvas,
                     name,
                     rect.with_inset((2.0 * s, 2.0 * s)),
@@ -486,7 +486,7 @@ impl Document {
                     let p = fill(if name == current { ACTIVE } else { HOVER });
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 7.0 * s, 7.0 * s), &p);
                 }
-                crate::sticker::draw_sticker_image(
+                crate::sticker::draw_sticker(
                     canvas,
                     name,
                     rect.with_inset((4.0 * s, 4.0 * s)),

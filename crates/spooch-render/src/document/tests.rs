@@ -1152,6 +1152,40 @@ fn stickers_stamp_size_swap_and_keep() {
 }
 
 #[test]
+fn stamps_are_wide_and_lean_and_swaps_keep_the_area() {
+    let (w, h) = (600u32, 400u32);
+    let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
+    let mut d =
+        with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
+    let at = |name: &str| {
+        crate::STICKERS
+            .iter()
+            .position(|(n, _)| *n == name)
+            .unwrap()
+    };
+    let last = |d: &Document| match d.marks.last() {
+        Some(Mark::Sticker(s)) => *s,
+        _ => panic!("no sticker"),
+    };
+    d.set_tool(Tool::Sticker);
+    assert!(d.pick_sticker(at("stamp_approved")));
+    click(&mut d, 150.0, 150.0);
+    let s = last(&d);
+    let r = s.rect;
+    assert!(r.width() > 2.0 * r.height(), "{r:?}");
+    assert!((r.width() * r.height() - 96.0 * 96.0).abs() < 1.0);
+    assert_eq!(r.center(), Point::new(150.0, 150.0));
+    assert_eq!(s.angle, crate::sticker::STAMP_TILT);
+    // Selected and swapped for an emoji: square, same middle and area.
+    d.set_tool(Tool::Arrow);
+    click(&mut d, 150.0, 150.0);
+    assert!(d.pick_sticker(at("fire")));
+    let r = last(&d).rect;
+    assert!((r.width() - r.height()).abs() < 0.01, "{r:?}");
+    assert!((r.width() - 96.0).abs() < 0.01 && r.center() == Point::new(150.0, 150.0));
+}
+
+#[test]
 fn escape_on_a_blank_label_repaints_to_drop_the_caret() {
     let mut d = doc();
     d.begin_text(Point::new(20.0, 50.0));
