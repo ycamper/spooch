@@ -2,7 +2,7 @@
 
 use spooch_render::skia_safe::IRect;
 
-/// The smallest the editor window goes, in pixels.
+/// The smallest the editor window goes, in pixels at 100%.
 pub const EDITOR_MIN: (i32, i32) = (560, 380);
 
 /// Where a new editor window goes on a monitor whose work area is `work`:

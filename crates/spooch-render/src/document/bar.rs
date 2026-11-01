@@ -8,8 +8,8 @@ use skia_safe::{Font, IRect, Paint, Point, RRect, Rect};
 use super::Document;
 use super::chrome::{Panel, contains, panel};
 use super::theme::{
-    BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron, draw_list, ellipsize,
-    rounded_panel, swatch, tick_box,
+    ACCENT, ACCENT_HOVER, BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron,
+    draw_list, ellipsize, rounded_panel, swatch, tick_box,
 };
 
 /// Something on the bar.
@@ -79,6 +79,8 @@ const PAD: f32 = 4.0;
 const GAP: f32 = 4.0;
 pub(super) const TEXT_SIZE: f32 = 12.0;
 const MARGIN: f32 = 8.0;
+/// The least the window's footer cuts the name down to.
+const MIN_NAME: f32 = 80.0;
 /// A row of a bar list.
 const MENU_ROW: f32 = 26.0;
 /// The label of the Frame menu's last row.
@@ -211,15 +213,16 @@ impl Document {
         ]
         .into_iter()
         // A colour for frames with a top or edges, a title for those with
-        // a top; in the window, Copy is on the top row.
+        // a top; Open only over the screen.
         .filter(|(item, _)| match item {
             BarItem::FrameColour => self.frame().has_colour(),
             BarItem::FrameTitle => self.frame().has_title(),
             _ => true,
         })
-        .filter(|(item, _)| !matches!(item, BarItem::Copy | BarItem::Window) || !self.in_window())
+        .filter(|(item, _)| *item != BarItem::Window || !self.in_window())
         .collect();
-        let widths: Vec<f32> = texts
+        let mut texts = texts;
+        let mut widths: Vec<f32> = texts
             .iter()
             .map(|(item, text)| {
                 let t = self.text_width(font.as_ref(), text);
@@ -229,13 +232,30 @@ impl Document {
                     BarItem::FrameColour => 24.0 * s,
                     BarItem::FrameTitle => (t + 20.0 * s).clamp(70.0 * s, 220.0 * s),
                     BarItem::Name => (t + 20.0 * s).max(160.0 * s),
-                    BarItem::Size => t + 12.0 * s,
+                    // A pixel spare, so rounding doesn't cut it short.
+                    BarItem::Size => t + 14.0 * s,
                     BarItem::Shadow => t + 20.0 * s,
                     _ => t + 22.0 * s,
                 }
             })
             .collect();
-        let inner: f32 = widths.iter().sum::<f32>() + GAP * s * (widths.len() - 1) as f32;
+        let inner =
+            |widths: &[f32]| widths.iter().sum::<f32>() + GAP * s * (widths.len() - 1) as f32;
+        // The window's footer is as wide as the window: when it's narrow,
+        // the name gives way first, then the size goes.
+        if let Some(f) = self.dock().map(|d| d.foot) {
+            let room = f.width() as f32 - 2.0 * PAD * s;
+            let short = MIN_NAME * s;
+            let name_w = widths[0];
+            if inner(&widths) - name_w + short > room
+                && let Some(i) = texts.iter().position(|(item, _)| *item == BarItem::Size)
+            {
+                texts.remove(i);
+                widths.remove(i);
+            }
+            widths[0] = (room - (inner(&widths) - name_w)).clamp(short, name_w);
+        }
+        let inner = inner(&widths);
         let w = (inner + 2.0 * PAD * s).ceil() as i32;
         let h = (BAR_H * s).round() as i32;
         let margin = (MARGIN * s).round() as i32;
@@ -471,6 +491,8 @@ impl Document {
                     }
                     BarItem::FrameTitle => (Some(FIELD), TEXT),
                     BarItem::Size => (None, MUTED),
+                    // The main action stands out.
+                    BarItem::Copy => (Some(if hover { ACCENT_HOVER } else { ACCENT }), TEXT),
                     _ => (Some(if hover { SELECTED } else { BUTTON }), TEXT),
                 };
                 if let Some(bg) = bg {
