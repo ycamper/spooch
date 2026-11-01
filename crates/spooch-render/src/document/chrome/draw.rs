@@ -696,6 +696,7 @@ impl Document {
                 let t = self.top_layout()?;
                 let b = match item {
                     crate::document::view::TopItem::Gallery => t.gallery,
+                    crate::document::view::TopItem::Settings => t.settings,
                     crate::document::view::TopItem::Zoom => t.zoom,
                     crate::document::view::TopItem::Copy => t.copy,
                     crate::document::view::TopItem::Window(w) => {

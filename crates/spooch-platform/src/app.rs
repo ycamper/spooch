@@ -19,7 +19,7 @@ pub enum Command {
     ShowSaved,
     TogglePrintScreen,
     ToggleLaunchAtLogin,
-    EditSettings,
+    OpenSettings,
     /// Make an account; sign in to one (with a name and password, or a
     /// copied device token); set its password; sign out.
     CreateAccount,
@@ -64,7 +64,7 @@ impl MenuItem {
 }
 
 /// The tray menu: capturing, the editor, the switches and the settings
-/// file (Spooch reloads it when it's saved), sharing, and Quit. Recents
+/// window, sharing, and Quit. Recents
 /// are browsed in the editor's gallery. `login_label` is the OS's wording for starting
 /// with the computer ("Start when I sign in" on Windows); without
 /// `captures` there's nothing for the editor to open yet.
@@ -107,7 +107,7 @@ pub fn tray_menu(
             Command::TogglePrintScreen,
         ),
         switch(login_label, launch_at_login, Command::ToggleLaunchAtLogin),
-        MenuItem::entry("Settings...", Some(Command::EditSettings)),
+        MenuItem::entry("Settings...", Some(Command::OpenSettings)),
         MenuItem::Separator,
     ];
     // The account: who's signed in, greyed out, above what to do with it.
@@ -154,8 +154,8 @@ pub enum Effect {
     HideCountdown,
     TogglePrintScreen,
     ToggleLaunchAtLogin,
-    /// Open the settings file.
-    EditSettings,
+    /// Open the settings window.
+    OpenSettings,
     /// Show the saved pictures: `save::to_show` says what to select or
     /// open.
     ShowSaved,
@@ -214,7 +214,7 @@ impl Flow {
             Command::OpenEditor => vec![Effect::OpenEditor(None)],
             Command::TogglePrintScreen => vec![Effect::TogglePrintScreen],
             Command::ToggleLaunchAtLogin => vec![Effect::ToggleLaunchAtLogin],
-            Command::EditSettings => vec![Effect::EditSettings],
+            Command::OpenSettings => vec![Effect::OpenSettings],
             Command::ShowSaved => vec![Effect::ShowSaved],
             Command::CreateAccount => vec![Effect::CreateAccount],
             Command::SignIn => vec![Effect::SignIn],

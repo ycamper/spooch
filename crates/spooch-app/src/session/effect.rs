@@ -33,6 +33,8 @@ pub enum Effect {
     OpenWindow,
     /// One of the editor window's own buttons was clicked.
     Window(WindowButton),
+    /// Open the settings window.
+    OpenSettings,
     /// Show this folder (a kept capture's) in the file manager.
     Reveal(PathBuf),
     Log(String),

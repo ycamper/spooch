@@ -215,55 +215,89 @@ impl Settings {
         (s, problems)
     }
 
+    /// Each setting's key and its value as the file writes it, in the
+    /// file's order.
+    fn entries(&self) -> [(&'static str, String); 9] {
+        [
+            ("capture", self.capture.to_string()),
+            ("reopen", self.reopen.to_string()),
+            ("quit", self.quit_text()),
+            ("print_screen", self.print_screen.to_string()),
+            ("countdown", optional_text(self.countdown)),
+            ("countdown_seconds", self.countdown_seconds.to_string()),
+            ("palette", self.palette.clone()),
+            ("share_server", self.share_server.clone()),
+            ("sync", self.sync.to_string()),
+        ]
+    }
+
     /// The settings as a commented file.
     pub fn to_text(&self) -> String {
-        format!(
-            "# Spooch settings. Spooch reloads this file when it's saved. Custom
-# frames go in the frames folder next to it (see the README there).
-#
-# Shortcuts are modifiers (Ctrl, Alt, Shift, Super) and one key: a letter,
-# a digit, F1 to F24, or PrintScreen. For example: Ctrl+Shift+2, Alt+F9.
+        let mut out = HEADER.to_string();
+        for (key, value) in self.entries() {
+            let doc = DOCS.iter().find(|(k, _)| *k == key).map_or("", |(_, d)| d);
+            out.push('\n');
+            for line in doc.lines() {
+                out.push_str("# ");
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.push_str(&format!(
+                "{key} = {value}
+"
+            ));
+        }
+        out
+    }
 
-# Freeze the screen and select a region.
-capture = {}
+    /// `text`, the file as it is, with each setting's value written over
+    /// the old one, keeping comments, order and anything else in it.
+    /// Settings it lacks are added at the end with their comments.
+    pub fn update_text(&self, text: &str) -> String {
+        let entries = self.entries();
+        let mut seen = [false; 9];
+        let mut out = String::with_capacity(text.len() + 64);
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            let known = (!trimmed.starts_with('#'))
+                .then(|| trimmed.split_once('='))
+                .flatten()
+                .and_then(|(key, _)| entries.iter().position(|(k, _)| *k == key.trim()));
+            match known {
+                Some(i) => {
+                    seen[i] = true;
+                    let indent = &line[..line.len() - trimmed.len()];
+                    let (key, value) = &entries[i];
+                    out.push_str(&format!("{indent}{key} = {value}"));
+                }
+                None => out.push_str(line),
+            }
+            out.push('\n');
+        }
+        let missing: Vec<usize> = (0..entries.len()).filter(|&i| !seen[i]).collect();
+        if !missing.is_empty() {
+            let full = self.to_text();
+            let blocks: Vec<&str> = full
+                .split(
+                    "
 
-# Reopen the newest capture from Recents, marks still editable.
-reopen = {}
-
-# Quit Spooch from a shortcut, or none. The tray menu has Quit too.
-quit = {}
-
-# Also capture with the Print Screen key on its own (true or false).
-print_screen = {}
-
-# Capture after a countdown, to catch open menus and hover states, or none.
-# Press it again during the countdown to call it off.
-countdown = {}
-
-# How long the countdown runs, 1 to 10 seconds.
-countdown_seconds = {}
-
-# The mark colours new captures start with: vivid, soft or ink. The style
-# row's colour button switches them too.
-palette = {}
-
-# Where captures are shared to. Sign in from the tray menu.
-share_server = {}
-
-# Sync captures with your account (true or false), once signed in. Nothing
-# is uploaded until this is on.
-sync = {}
 ",
-            self.capture,
-            self.reopen,
-            self.quit_text(),
-            self.print_screen,
-            optional_text(self.countdown),
-            self.countdown_seconds,
-            self.palette,
-            self.share_server,
-            self.sync
-        )
+                )
+                .collect();
+            for i in missing {
+                let key = entries[i].0;
+                let prefix = format!("{key} = ");
+                if let Some(block) = blocks
+                    .iter()
+                    .find(|b| b.lines().any(|l| l.starts_with(&prefix)))
+                {
+                    out.push('\n');
+                    out.push_str(block.trim_end());
+                    out.push('\n');
+                }
+            }
+        }
+        out
     }
 
     /// Load from `path`, creating it with the defaults if it doesn't exist.
@@ -279,12 +313,18 @@ sync = {}
         }
     }
 
+    /// Write the settings to `path`, keeping what else is in the file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
+        let text = match fs::read_to_string(path) {
+            Ok(old) => self.update_text(&old),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => self.to_text(),
+            Err(e) => return Err(e),
+        };
         // `Config::watch` may read it at any moment.
-        crate::write_atomic(path, self.to_text().as_bytes())
+        crate::write_atomic(path, text.as_bytes())
     }
 
     /// The quit shortcut as written in the file: "none" when there isn't one.
@@ -326,6 +366,54 @@ sync = {}
         all
     }
 }
+
+/// The top of a new settings file.
+const HEADER: &str = "# Spooch settings. Spooch reloads this file when it's saved. Custom
+# frames go in the frames folder next to it (see the README there).
+#
+# Shortcuts are modifiers (Ctrl, Alt, Shift, Super) and one key: a letter,
+# a digit, F1 to F24, or PrintScreen. For example: Ctrl+Shift+2, Alt+F9.
+";
+
+/// The comment above each setting in a new file.
+const DOCS: [(&str, &str); 9] = [
+    ("capture", "Freeze the screen and select a region."),
+    (
+        "reopen",
+        "Reopen the newest capture from Recents, marks still editable.",
+    ),
+    (
+        "quit",
+        "Quit Spooch from a shortcut, or none. The tray menu has Quit too.",
+    ),
+    (
+        "print_screen",
+        "Also capture with the Print Screen key on its own (true or false).",
+    ),
+    (
+        "countdown",
+        "Capture after a countdown, to catch open menus and hover states, or none.\n\
+         Press it again during the countdown to call it off.",
+    ),
+    (
+        "countdown_seconds",
+        "How long the countdown runs, 1 to 10 seconds.",
+    ),
+    (
+        "palette",
+        "The mark colours new captures start with: vivid, soft or ink. The style\n\
+         row's colour button switches them too.",
+    ),
+    (
+        "share_server",
+        "Where captures are shared to. Sign in from the tray menu.",
+    ),
+    (
+        "sync",
+        "Sync captures with your account (true or false), once signed in. Nothing\n\
+         is uploaded until this is on.",
+    ),
+];
 
 /// What a global shortcut does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -432,6 +520,40 @@ mod tests {
         assert_eq!(s.reopen.to_string(), "Alt+R");
         assert!(!s.print_screen);
         assert_eq!(problems.len(), 4, "{problems:?}");
+    }
+
+    #[test]
+    fn saving_keeps_comments_and_other_lines() {
+        let old = "# mine
+capture = Ctrl+Shift+2   
+  # about quit
+  quit = none
+future_key = 1
+";
+        let s = Settings {
+            capture: Shortcut::parse("Alt+F9").unwrap(),
+            sync: true,
+            ..Settings::default()
+        };
+        let text = s.update_text(old);
+        assert!(
+            text.starts_with(
+                "# mine
+capture = Alt+F9
+  # about quit
+  quit = none
+future_key = 1
+"
+            ),
+            "{text}"
+        );
+        // What the file lacked comes after, with its comment.
+        assert!(text.contains("# Sync captures with your account"));
+        let (back, problems) = Settings::parse(&text);
+        assert_eq!(back, s);
+        assert_eq!(problems.len(), 1, "only the unknown key");
+        // A whole file round trips unchanged.
+        assert_eq!(s.update_text(&s.to_text()), s.to_text());
     }
 
     #[test]

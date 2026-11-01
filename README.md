@@ -54,7 +54,8 @@ Linux targets; cross-compiling to `windows-gnu` isn't supported.
   gallery of Recents (**Ctrl+H** hides it).
 - Every capture is kept in Recents for 30 days or 2 GB. **Ctrl+Alt+Shift+2**
   reopens the newest; PageUp and PageDown step through them.
-- Settings live in `%APPDATA%\Spooch\settings.txt`
+- **Settings...** in the tray, or the gear in the editor, changes shortcuts
+  and the rest. They live in `%APPDATA%\Spooch\settings.txt`
   (`~/.config/spooch/settings.txt`) and reload when saved. Custom frames go
   in the `frames` folder next to it.
 

@@ -644,7 +644,7 @@ fn carry_out(o: &mut Overlay, effects: Vec<Effect>) -> After {
                 post_done();
             }
             // The overlay has no window buttons or gallery.
-            Effect::Window(_) | Effect::Reveal(_) => {}
+            Effect::Window(_) | Effect::Reveal(_) | Effect::OpenSettings => {}
             Effect::Log(line) => log::line(&line),
         }
     }

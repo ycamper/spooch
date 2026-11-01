@@ -21,6 +21,9 @@ pub enum Key {
     End,
     PageUp,
     PageDown,
+    /// F1 to F24.
+    F(u8),
+    PrintScreen,
     /// Any other key, by the character it types without Shift (letters
     /// lower case): '1', 'a', '['.
     Char(char),

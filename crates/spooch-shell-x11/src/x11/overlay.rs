@@ -483,7 +483,7 @@ impl App {
                     return;
                 }
                 // The overlay has no window buttons or gallery.
-                EditEffect::Window(_) | EditEffect::Reveal(_) => {}
+                EditEffect::Window(_) | EditEffect::Reveal(_) | EditEffect::OpenSettings => {}
                 EditEffect::Log(line) => log::line(&line),
             }
         }

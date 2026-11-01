@@ -12,6 +12,7 @@ pub use spooch_platform::log;
 mod monitors;
 mod overlay;
 mod save;
+mod settings_window;
 mod system;
 mod tray;
 mod window;
@@ -21,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use capture::CaptureBackend;
-use spooch_app::{Args, Carry, Config, Deliverable};
+use spooch_app::{Args, Carry, Config, Deliverable, SettingsChange, SettingsFacts};
 use spooch_platform::app::{self, Effect, Flow, MenuItem};
 use spooch_platform::recents::Recents;
 use spooch_platform::settings::{Action, Key, Settings, Shortcut};
@@ -81,7 +82,12 @@ struct Shell {
     hotkeys: Vec<Action>,
     tray: Option<tray::Tray>,
     recents: Option<Recents>,
+    /// The shortcuts are off while the settings window records one.
+    paused: bool,
 }
+
+/// What Windows calls starting with the computer.
+const LOGIN_LABEL: &str = "Start when I sign in";
 
 impl Shell {
     /// Register every shortcut in the settings, replacing any registered
@@ -93,6 +99,9 @@ impl Shell {
             }
         }
         self.hotkeys.clear();
+        if self.paused {
+            return Vec::new();
+        }
         let mut taken = Vec::new();
         for (action, shortcut) in self.settings.shortcuts() {
             let id = self.hotkeys.len() as i32 + 1;
@@ -251,9 +260,40 @@ impl Shell {
             &self.settings,
             self.recents.as_ref().is_some_and(|r| r.latest().is_some()),
             system::launch_at_login(),
-            "Start when I sign in",
+            LOGIN_LABEL,
             &carry(|c| c.sharing.signed()),
         )
+    }
+
+    /// Run `f` with what the settings window shows.
+    fn with_facts<R>(&self, f: impl FnOnce(&SettingsFacts) -> R) -> R {
+        let sharing = carry(|c| c.sharing.signed());
+        f(&SettingsFacts {
+            settings: &self.settings,
+            launch_at_login: system::launch_at_login(),
+            login_label: LOGIN_LABEL,
+            sharing: &sharing,
+        })
+    }
+
+    /// Carry out a change from the settings window, other than a tray
+    /// command.
+    fn settings_change(&mut self, change: SettingsChange) {
+        match change {
+            // Saving it brings the reload that registers the shortcuts.
+            SettingsChange::Settings(s) => {
+                self.settings = s;
+                self.save_settings();
+                settings_window::set_note(None);
+            }
+            SettingsChange::PauseShortcuts(on) => {
+                self.paused = on;
+                self.register_hotkeys();
+            }
+            SettingsChange::EditFile => system::open(&self.config.settings_path()),
+            SettingsChange::Problem(p) => settings_window::set_note(Some(p)),
+            SettingsChange::Command(_) => {}
+        }
     }
 
     /// Sign in, on a thread so Spooch keeps working meanwhile: with a
@@ -389,6 +429,7 @@ pub fn run() -> Result<(), String> {
         hotkeys: Vec::new(),
         tray: None,
         recents,
+        paused: false,
     };
     let taken = shell.register_hotkeys();
     shell.tray = tray::Tray::new(owner);
@@ -460,6 +501,31 @@ pub fn run() -> Result<(), String> {
         if msg.hwnd.is_invalid() && msg.message == WM_SETTINGS_CHANGED {
             log::line("settings changed; reloading");
             shell.reload_settings();
+            shell.with_facts(settings_window::refresh);
+            continue;
+        }
+        if msg.hwnd.is_invalid() && msg.message == settings_window::WM_SETTINGS_NEWS {
+            match msg.wParam.0 {
+                settings_window::NEWS_OPEN => shell.with_facts(settings_window::open),
+                settings_window::NEWS_RESUME => {
+                    shell.settings_change(SettingsChange::PauseShortcuts(false))
+                }
+                _ => {}
+            }
+            let mut quit = false;
+            for change in settings_window::take_changes(&shell.settings) {
+                match change {
+                    SettingsChange::Command(c) => {
+                        let effects = flow.command(c, &shell.settings, overlay::is_active());
+                        quit |= apply(effects, &mut shell, &mut backend, &mut current, &mut badge);
+                    }
+                    other => shell.settings_change(other),
+                }
+            }
+            if quit {
+                break;
+            }
+            shell.with_facts(settings_window::refresh);
             continue;
         }
         if msg.hwnd.is_invalid() && msg.message == WM_WELCOME_DONE {
@@ -508,7 +574,7 @@ fn apply(
             },
             // Dropping it takes the badge off the screen.
             Effect::HideCountdown => *badge = None,
-            Effect::EditSettings => system::open(&shell.config.settings_path()),
+            Effect::OpenSettings => shell.with_facts(settings_window::open),
             Effect::ShowSaved => match spooch_platform::save::to_show() {
                 Some(Ok(file)) => system::reveal(&file),
                 Some(Err(folder)) => system::open(&folder),

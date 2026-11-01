@@ -172,7 +172,7 @@ impl App {
         })
     }
 
-    fn set_title(&self, window: Window, title: &str) {
+    pub(super) fn set_title(&self, window: Window, title: &str) {
         let _ = self.conn.change_property8(
             PropMode::REPLACE,
             window,
@@ -415,6 +415,7 @@ impl App {
                 | EditEffect::OpenWindow
                 | EditEffect::Shared => {}
                 EditEffect::Reveal(path) => system::reveal(&path),
+                EditEffect::OpenSettings => self.open_settings(),
                 EditEffect::Log(line) => log::line(&line),
             }
         }

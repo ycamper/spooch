@@ -13,8 +13,9 @@ mod select;
 mod sticker;
 pub use document::{
     Action, Counts, Cursor, Document, Exported, Format, Frame, Gallery, GalleryAction, Key,
-    KeyOutcome, LoadError, Mods, PALETTES, Palette, Panel, SHARE_SHORTCUT, Style, Styles,
-    SyncBadge, Tool, WindowButton, WindowPart, load_frames, thumbnail,
+    KeyOutcome, LoadError, Mods, PALETTES, Palette, Panel, SHARE_SHORTCUT, SettingsEvent,
+    SettingsItem, SettingsPage, Style, Styles, SyncBadge, Tool, WindowButton, WindowPart,
+    load_frames, thumbnail,
 };
 pub use select::{OUTSIDE_BRIGHTNESS, nudge_pointer, selecting_loupe, selection_frame};
 pub use sticker::{STICKERS, Sticker};
