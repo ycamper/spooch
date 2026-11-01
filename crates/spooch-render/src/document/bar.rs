@@ -79,6 +79,15 @@ const PAD: f32 = 4.0;
 const GAP: f32 = 4.0;
 pub(super) const TEXT_SIZE: f32 = 12.0;
 const MARGIN: f32 = 8.0;
+/// The least the window's footer cuts the name down to.
+const MIN_NAME: f32 = 80.0;
+/// A row of a bar list.
+const MENU_ROW: f32 = 26.0;
+/// The label of the Frame menu's last row.
+const PIN: &str = "Use for every capture";
+/// Room for a swatch or tick box before a menu row's name.
+const ROW_MARK: f32 = 22.0;
+
 /// Which line each item of `widths` goes on, filling each line up to
 /// `room` with `gap` between items. An item wider than `room` gets a line
 /// of its own.
@@ -96,15 +105,6 @@ fn wrap(widths: &[f32], room: f32, gap: f32) -> Vec<usize> {
         })
         .collect()
 }
-
-/// The least the window's footer cuts the name down to.
-const MIN_NAME: f32 = 80.0;
-/// A row of a bar list.
-const MENU_ROW: f32 = 26.0;
-/// The label of the Frame menu's last row.
-const PIN: &str = "Use for every capture";
-/// Room for a swatch or tick box before a menu row's name.
-const ROW_MARK: f32 = 22.0;
 
 /// Where the bar and its items sit.
 pub(super) struct BarLayout {
