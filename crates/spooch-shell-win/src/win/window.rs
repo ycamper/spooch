@@ -19,6 +19,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_MENU,
 };
@@ -320,10 +321,12 @@ extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         WM_GETMINMAXINFO => {
             let info = lparam.0 as *mut MINMAXINFO;
             if !info.is_null() {
+                // EDITOR_MIN is at 100%; the window is in physical pixels.
+                let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96) as i32;
                 unsafe {
                     (*info).ptMinTrackSize = POINT {
-                        x: EDITOR_MIN.0,
-                        y: EDITOR_MIN.1,
+                        x: EDITOR_MIN.0 * dpi / 96,
+                        y: EDITOR_MIN.1 * dpi / 96,
                     };
                 }
             }
