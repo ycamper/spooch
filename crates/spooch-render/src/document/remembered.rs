@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::frame::{FRAME_COLOURS, Frame, SHADOWS};
+use super::frame::{
+    Backdrop, DEFAULT_PADDING, FRAME_COLOURS, Frame, PADDINGS, SHADOWS, padding_index,
+};
 use super::style::{
     EDGE_WIDTHS, EDGES, Framing, MIN_OPACITY, PALETTE, QUICK_STYLES, RECENT_STICKERS, SIZES, Style,
     Styles, tool_index,
@@ -43,6 +45,10 @@ struct FramingFile {
     frame: Option<String>,
     frame_colour: u8,
     shadow: u8,
+    /// By name; `None` for no background.
+    background: Option<String>,
+    /// In pixels.
+    padding: Option<u16>,
 }
 
 impl From<Framing> for FramingFile {
@@ -51,6 +57,10 @@ impl From<Framing> for FramingFile {
             frame: (f.frame != Frame::NONE).then(|| f.frame.key()),
             frame_colour: f.frame_colour,
             shadow: f.shadow,
+            background: (f.background != 0)
+                .then(|| Backdrop::key(f.background))
+                .flatten(),
+            padding: PADDINGS.get(usize::from(f.padding)).copied(),
         }
     }
 }
@@ -63,12 +73,22 @@ impl FramingFile {
             None => Frame::NONE,
             Some(key) => Frame::from_key(key)?,
         };
+        let background = match &self.background {
+            None => 0,
+            Some(key) => Backdrop::from_key(key)?,
+        };
+        let padding = match self.padding {
+            None => DEFAULT_PADDING,
+            Some(px) => padding_index(px)?,
+        };
         (usize::from(self.frame_colour) < FRAME_COLOURS.len()
             && usize::from(self.shadow) < SHADOWS.len())
         .then_some(Framing {
             frame,
             frame_colour: self.frame_colour,
             shadow: self.shadow,
+            background,
+            padding,
         })
     }
 }
@@ -198,6 +218,8 @@ mod tests {
             frame: Frame::builtin("terminal-modern"),
             frame_colour: 3,
             shadow: 2,
+            background: 7,
+            padding: 1,
         };
         styles.pinned = Some(styles.framing);
         styles.quick[t][1] = Some(styles.tools[t]);

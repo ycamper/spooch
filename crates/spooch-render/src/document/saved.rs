@@ -54,6 +54,11 @@ struct File {
     /// The drop shadow; older files have Auto.
     #[serde(default, skip_serializing_if = "is_zero")]
     shadow: u8,
+    /// The background, and its padding in pixels; older files have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    padding: Option<u16>,
     #[serde(deserialize_with = "known_marks")]
     marks: Vec<SavedMark>,
 }
@@ -556,6 +561,11 @@ impl Document {
             frame_colour: self.frame_colour(),
             frame_title: self.frame_title().to_string(),
             shadow: self.shadow(),
+            background: (self.background() != 0)
+                .then(|| super::frame::Backdrop::key(self.background()))
+                .flatten(),
+            padding: (self.background() != 0)
+                .then(|| super::frame::PADDINGS[usize::from(self.padding())]),
             marks: self.marks.iter().map(SavedMark::from).collect(),
         }
     }
@@ -611,6 +621,14 @@ impl Document {
         doc.set_frame(Frame::from_key(&file.frame).unwrap_or_default());
         doc.set_frame_colour(file.frame_colour);
         doc.set_shadow(file.shadow);
+        let background = file
+            .background
+            .as_deref()
+            .map(super::frame::Backdrop::from_key);
+        doc.set_background(background.flatten().unwrap_or(0));
+        if let Some(i) = file.padding.and_then(super::frame::padding_index) {
+            doc.set_padding(i);
+        }
         if !file.frame_title.is_empty() {
             doc.set_frame_title(&file.frame_title);
         }

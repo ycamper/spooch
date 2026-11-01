@@ -628,12 +628,7 @@ impl Document {
         let framed = self.frame_geometry((w, h)).is_some();
         // Picking a frame, its colour, the shadow or the title changes the
         // picture as much as drawing does.
-        let frame_key = Some((
-            self.frame(),
-            self.frame_colour(),
-            self.shadow(),
-            self.frame_title().to_string(),
-        ));
+        let frame_key = Some((self.styles.framing, self.frame_title().to_string()));
         if stale || self.window_image.is_none() || frame_key != self.window_frame_key {
             self.window_frame_key = frame_key;
             let wants_frame = self.framing().is_some();

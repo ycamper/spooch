@@ -9,6 +9,7 @@
 //! `registry::BUILTIN`; a new kind of item is a variant of `spec::Item`
 //! and a match arm in `draw::draw_item`.
 
+mod backdrop;
 mod draw;
 mod registry;
 mod spec;
@@ -20,6 +21,8 @@ use std::rc::Rc;
 use super::theme::hex;
 use skia_safe::{ClipOp, Color4f, Data, Font, Paint, Point, Rect, images, surfaces};
 
+pub use backdrop::{BACKGROUNDS, Backdrop, PADDINGS};
+pub(super) use backdrop::{DEFAULT_PADDING, padding_index};
 pub use draw::SHADOWS;
 pub use registry::load_frames;
 
@@ -109,6 +112,14 @@ impl Frame {
     }
 }
 
+/// Everything drawn round the capture.
+pub(super) struct Framed {
+    frame: Option<Rc<Loaded>>,
+    shadow: draw::Shadow,
+    /// The background and its padding in screen pixels.
+    backdrop: Option<(Backdrop, f32)>,
+}
+
 /// A finished image: straight (not premultiplied) BGRA rows, tightly
 /// packed. Opaque unless it has a frame.
 pub struct Exported {
@@ -181,6 +192,26 @@ impl Document {
         self.chrome_key = None;
     }
 
+    /// The background, into `BACKGROUNDS`.
+    pub fn background(&self) -> u8 {
+        self.styles.framing.background
+    }
+
+    pub fn set_background(&mut self, index: u8) {
+        self.styles.framing.background = index % BACKGROUNDS.len() as u8;
+        self.chrome_key = None;
+    }
+
+    /// The padding round a background, into `PADDINGS`.
+    pub fn padding(&self) -> u8 {
+        self.styles.framing.padding
+    }
+
+    pub fn set_padding(&mut self, index: u8) {
+        self.styles.framing.padding = index % PADDINGS.len() as u8;
+        self.chrome_key = None;
+    }
+
     /// Whether every capture starts with this frame, colour and shadow.
     pub(crate) fn look_pinned(&self) -> bool {
         self.styles.pinned == Some(self.styles.framing)
@@ -240,16 +271,27 @@ impl Document {
         &self,
         (w, h): (i32, i32),
     ) -> Option<(i32, i32, skia_safe::IRect)> {
-        let (frame, sh) = self.framing()?;
-        let g = draw::geometry(frame.as_deref(), sh, w, h, self.scale);
+        let g = draw::geometry(&self.framing()?, w, h, self.scale);
         Some((g.width, g.height, g.content))
     }
 
-    /// The frame and shadow in use, or `None` with neither.
-    pub(super) fn framing(&self) -> Option<(Option<Rc<Loaded>>, draw::Shadow)> {
+    /// The frame, shadow and background in use, or `None` with none.
+    pub(super) fn framing(&self) -> Option<Framed> {
         let frame = self.frame().loaded();
-        let sh = draw::Shadow::of(self.shadow(), frame.as_deref());
-        (frame.is_some() || !sh.is_none()).then_some((frame, sh))
+        let backdrop = match Backdrop::of(self.background()) {
+            Backdrop::None => None,
+            b => Some((b, f32::from(PADDINGS[usize::from(self.padding())]))),
+        };
+        let shadow = draw::Shadow::of(
+            self.shadow(),
+            frame.is_some() || backdrop.is_some(),
+            frame.as_deref(),
+        );
+        (frame.is_some() || !shadow.is_none() || backdrop.is_some()).then_some(Framed {
+            frame,
+            shadow,
+            backdrop,
+        })
     }
 
     /// The frame and shadow drawn round `content` (`w` by `h`, opaque BGRA
@@ -260,16 +302,15 @@ impl Document {
         content: &[u8],
         (w, h): (i32, i32),
     ) -> Option<(skia_safe::Surface, skia_safe::IRect)> {
-        let (frame, sh) = self.framing()?;
-        let g = draw::geometry(frame.as_deref(), sh, w, h, self.scale);
+        let framed = self.framing()?;
+        let g = draw::geometry(&framed, w, h, self.scale);
         let premul = crate::bgra_info((g.width, g.height), skia_safe::AlphaType::Premul);
         let mut surface = surfaces::raster(&premul, None, None)?;
         let canvas = surface.canvas();
         canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
         draw::draw(
             canvas,
-            frame.as_deref(),
-            sh,
+            &framed,
             self.styles.framing.frame_colour,
             &self.frame_title,
             content,
@@ -449,6 +490,48 @@ mod tests {
         // It steps round.
         d.set_shadow(5);
         assert_eq!(d.shadow(), 0);
+    }
+
+    #[test]
+    fn backgrounds_pad_the_capture_and_come_back() {
+        let (mut d, _) = placed();
+        let plain = d.export();
+        let px = |out: &Exported, x: u32, y: u32| {
+            let i = ((y * out.width + x) * 4) as usize;
+            out.bgra[i..i + 4].to_vec()
+        };
+        // A gradient: 64 px all round, opaque corners, the capture inside
+        // untouched, and Auto now casts a shadow under it.
+        let peach = BACKGROUNDS.iter().position(|(n, _)| *n == "Peach").unwrap() as u8;
+        d.set_background(peach);
+        let out = d.export_image();
+        assert_eq!((out.width, out.height), (200 + 128, 100 + 128));
+        assert_eq!(px(&out, 0, 0)[3], 255);
+        assert_eq!(
+            px(&out, 64 + 100, 64 + 50),
+            plain[(50 * 200 + 100) * 4..][..4]
+        );
+        let under = px(&out, 64 + 100, 64 + 100 + 8);
+        let corner = px(&out, 64 + 100, out.height - 1);
+        assert!(under[1] < corner[1], "no shadow under the capture");
+        // Transparent leaves the padding clear; padding 0 is the capture.
+        d.set_background(1);
+        assert_eq!(px(&d.export_image(), 0, 0)[3], 0);
+        d.set_padding(0);
+        d.set_shadow(1);
+        assert_eq!(d.export_image().bgra, plain);
+        // Glass fills it from the capture.
+        d.set_background(2);
+        d.set_padding(2);
+        assert_eq!(px(&d.export_image(), 0, 0)[3], 255);
+        // Saved with the capture.
+        d.set_background(peach);
+        let (w, h, pixels) = d.base_pixels();
+        let (back, _) = Document::from_saved(&d.to_json("x"), w, h, &pixels).unwrap();
+        assert_eq!((back.background(), back.padding()), (peach, 2));
+        // Padding steps round.
+        d.set_padding(PADDINGS.len() as u8);
+        assert_eq!(d.padding(), 0);
     }
 
     #[test]
