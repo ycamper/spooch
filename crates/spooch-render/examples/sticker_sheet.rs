@@ -3,25 +3,19 @@
 //!
 //!     cargo run --release -p spooch-render --example sticker_sheet -- sticker-sheet.png
 
-use skia_safe::{
-    AlphaType, Color4f, ColorType, Data, EncodedImageFormat, IRect, ImageInfo, Paint, Point, Rect,
-    images, surfaces,
-};
+mod common;
+
+use common::image;
+use skia_safe::{AlphaType, Color4f, IRect, Paint, Point, Rect, surfaces};
 use spooch_render::{Document, Tool};
 
 const DESK: (i32, i32) = (1200, 760);
 
 fn main() {
-    let out = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "sticker-sheet.png".into());
+    let out = common::out("sticker-sheet.png");
     let desk = desk_pixels();
     let area = IRect::from_xywh(120, 120, 900, 520);
-    let mut part = Vec::new();
-    for y in area.top..area.bottom {
-        let row = (y * DESK.0 + area.left) as usize * 4;
-        part.extend_from_slice(&desk[row..row + area.width() as usize * 4]);
-    }
+    let part = common::crop(&desk, DESK.0 as usize * 4, area);
     let mut d = Document::from_bgra(
         area.width() as u32,
         area.height() as u32,
@@ -87,10 +81,11 @@ fn main() {
     );
     let canvas_rect = d.canvas();
     let (px, stride) = d.render();
-    let mut tight = Vec::new();
-    for row in px.chunks(stride).take(canvas_rect.height() as usize) {
-        tight.extend_from_slice(&row[..canvas_rect.width() as usize * 4]);
-    }
+    let tight = common::crop(
+        px,
+        stride,
+        IRect::from_wh(canvas_rect.width(), canvas_rect.height()),
+    );
     c.draw_image(
         image(
             (canvas_rect.width(), canvas_rect.height()),
@@ -111,37 +106,23 @@ fn main() {
             None,
         );
     }
-    let png = s
-        .image_snapshot()
-        .encode(None, EncodedImageFormat::PNG, 100)
-        .unwrap();
-    std::fs::write(&out, png.as_bytes()).unwrap();
-    println!("wrote {out}");
-}
-
-fn image(size: (i32, i32), bgra: &[u8], alpha: AlphaType) -> skia_safe::Image {
-    let info = ImageInfo::new(size, ColorType::BGRA8888, alpha, None);
-    images::raster_from_data(&info, Data::new_copy(bgra), size.0 as usize * 4).unwrap()
+    common::save(&out, &s.image_snapshot());
 }
 
 /// A plain page with a few blocks, as a desktop.
 fn desk_pixels() -> Vec<u8> {
-    let mut s = surfaces::raster_n32_premul(DESK).unwrap();
-    let c = s.canvas();
-    c.clear(Color4f::new(0.94, 0.95, 0.97, 1.0));
-    let mut p = Paint::default();
-    for (i, colour) in [(0.25, 0.45, 0.85), (0.95, 0.6, 0.2), (0.3, 0.7, 0.45)]
-        .into_iter()
-        .enumerate()
-    {
-        p.set_color4f(Color4f::new(colour.0, colour.1, colour.2, 1.0), None);
-        c.draw_rect(
-            Rect::from_xywh(180.0 + i as f32 * 280.0, 380.0, 220.0, 160.0),
-            &p,
-        );
-    }
-    let info = ImageInfo::new(DESK, ColorType::BGRA8888, AlphaType::Premul, None);
-    let mut px = vec![0u8; (DESK.0 * DESK.1 * 4) as usize];
-    assert!(s.read_pixels(&info, &mut px, DESK.0 as usize * 4, (0, 0)));
-    px
+    common::pixels(DESK, |c| {
+        c.clear(Color4f::new(0.94, 0.95, 0.97, 1.0));
+        let mut p = Paint::default();
+        for (i, colour) in [(0.25, 0.45, 0.85), (0.95, 0.6, 0.2), (0.3, 0.7, 0.45)]
+            .into_iter()
+            .enumerate()
+        {
+            p.set_color4f(Color4f::new(colour.0, colour.1, colour.2, 1.0), None);
+            c.draw_rect(
+                Rect::from_xywh(180.0 + i as f32 * 280.0, 380.0, 220.0, 160.0),
+                &p,
+            );
+        }
+    })
 }

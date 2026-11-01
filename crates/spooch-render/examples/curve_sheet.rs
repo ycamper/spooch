@@ -3,19 +3,17 @@
 //!
 //!     cargo run --release -p spooch-render --example curve_sheet -- curve-sheet.png
 
-use skia_safe::{
-    AlphaType, Color4f, ColorType, Data, EncodedImageFormat, ImageInfo, Paint, Point, Rect, images,
-    surfaces,
-};
+mod common;
+
+use common::drag;
+use skia_safe::{Color4f, Paint, Point, Rect};
 use spooch_render::{Document, Label, Tool};
 
 const W: i32 = 1400;
 const H: i32 = 560;
 
 fn main() {
-    let out = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "curve-sheet.png".into());
+    let out = common::out("curve-sheet.png");
     let mut d = Document::from_bgra(W as u32, H as u32, W as usize * 4, &backdrop(), 1.0)
         .expect("a document");
     let face = Label::typeface().expect("the label font");
@@ -43,20 +41,7 @@ fn main() {
     d.set_tool(Tool::Pen);
     d.set_tool(Tool::Arrow);
 
-    let e = d.export_image();
-    let info = ImageInfo::new(
-        (e.width as i32, e.height as i32),
-        ColorType::BGRA8888,
-        AlphaType::Unpremul,
-        None,
-    );
-    let img = images::raster_from_data(&info, Data::new_copy(&e.bgra), e.width as usize * 4)
-        .expect("the export");
-    let png = img
-        .encode(None, EncodedImageFormat::PNG, 100)
-        .expect("a PNG");
-    std::fs::write(&out, png.as_bytes()).unwrap();
-    println!("wrote {out}");
+    common::save(&out, &common::exported(&d.export_image()));
 }
 
 fn label(d: &mut Document, at: (f32, f32), text: &str) {
@@ -94,28 +79,12 @@ fn bend(d: &mut Document, face: &skia_safe::Typeface, at: (f32, f32), text: &str
     d.end_drag();
 }
 
-fn drag(d: &mut Document, from: (f32, f32), to: (f32, f32)) {
-    d.begin_drag(Point::new(from.0, from.1));
-    for k in 1..=8 {
-        let t = k as f32 / 8.0;
-        d.drag_to(Point::new(
-            from.0 + (to.0 - from.0) * t,
-            from.1 + (to.1 - from.1) * t,
-        ));
-    }
-    d.end_drag();
-}
-
 /// A dark page with a light panel, so both edges show.
 fn backdrop() -> Vec<u8> {
-    let mut s = surfaces::raster_n32_premul((W, H)).unwrap();
-    let c = s.canvas();
-    c.clear(Color4f::new(0.13, 0.14, 0.17, 1.0));
-    let mut p = Paint::default();
-    p.set_color4f(Color4f::new(0.93, 0.94, 0.95, 1.0), None);
-    c.draw_rect(Rect::from_xywh(900.0, 0.0, 500.0, H as f32), &p);
-    let info = ImageInfo::new((W, H), ColorType::BGRA8888, AlphaType::Premul, None);
-    let mut px = vec![0u8; (W * H * 4) as usize];
-    assert!(s.read_pixels(&info, &mut px, W as usize * 4, (0, 0)));
-    px
+    common::pixels((W, H), |c| {
+        c.clear(Color4f::new(0.13, 0.14, 0.17, 1.0));
+        let mut p = Paint::default();
+        p.set_color4f(Color4f::new(0.93, 0.94, 0.95, 1.0), None);
+        c.draw_rect(Rect::from_xywh(900.0, 0.0, 500.0, H as f32), &p);
+    })
 }

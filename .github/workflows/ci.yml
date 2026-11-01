@@ -74,3 +74,10 @@ jobs:
             target/release/spooch-render-bench.exe
             bench.png
           if-no-files-found: error
+      - name: README images
+        run: cargo run --release -p spooch-render --example readme_images -- target/readme
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readme-images
+          path: target/readme/*.png
+          if-no-files-found: error

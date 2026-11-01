@@ -3,18 +3,16 @@
 //!
 //!     cargo run --release -p spooch-render --example highlight_sheet -- highlight-sheet.png
 
-use skia_safe::{
-    AlphaType, Canvas, Color4f, ColorType, Data, EncodedImageFormat, Font, FontMgr, FontStyle,
-    ImageInfo, Paint, Point, Rect, Typeface, images, surfaces,
-};
+mod common;
+
+use common::drag;
+use skia_safe::{Canvas, Color4f, Font, FontMgr, FontStyle, Paint, Rect, Typeface, surfaces};
 use spooch_render::{Document, HighlightLook, Tool};
 
 const PAGE: (i32, i32) = (620, 300);
 
 fn main() {
-    let out = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "highlight-sheet.png".into());
+    let out = common::out("highlight-sheet.png");
     let (cols, gap) = (4, 24.0);
     let (pw, ph) = (PAGE.0 as f32, PAGE.1 as f32);
     let w = (pw + gap) * cols as f32 + gap;
@@ -44,39 +42,14 @@ fn main() {
         // From the right, clear of the canvas edge's crop handle.
         drag(&mut d, (366.0, 162.0), (36.0, 128.0));
         d.set_tool(Tool::Arrow);
-        let e = d.export_image();
-        let info = ImageInfo::new(
-            (e.width as i32, e.height as i32),
-            ColorType::BGRA8888,
-            AlphaType::Unpremul,
-            None,
-        );
-        let img =
-            images::raster_from_data(&info, Data::new_copy(&e.bgra), e.width as usize * 4).unwrap();
+        let img = common::exported(&d.export_image());
         let x = gap + (i % cols) as f32 * (pw + gap);
         let y = gap + (i / cols) as f32 * (ph + 50.0 + gap);
         let ink = Paint::new(Color4f::new(0.9, 0.9, 0.92, 1.0), None);
         c.draw_str(look.name(), (x, y + 22.0), &title, &ink);
         c.draw_image(&img, (x, y + 40.0), None);
     }
-    let png = s
-        .image_snapshot()
-        .encode(None, EncodedImageFormat::PNG, 100)
-        .unwrap();
-    std::fs::write(&out, png.as_bytes()).unwrap();
-    println!("wrote {out}");
-}
-
-fn drag(d: &mut Document, from: (f32, f32), to: (f32, f32)) {
-    d.begin_drag(Point::new(from.0, from.1));
-    for k in 1..=8 {
-        let t = k as f32 / 8.0;
-        d.drag_to(Point::new(
-            from.0 + (to.0 - from.0) * t,
-            from.1 + (to.1 - from.1) * t,
-        ));
-    }
-    d.end_drag();
+    common::save(&out, &s.image_snapshot());
 }
 
 fn face(bold: bool) -> Typeface {
@@ -93,12 +66,7 @@ fn face(bold: bool) -> Typeface {
 
 /// A plain settings page: a title, some text and rules.
 fn page_pixels(dark: bool) -> Vec<u8> {
-    let mut s = surfaces::raster_n32_premul(PAGE).unwrap();
-    draw_page(s.canvas(), dark);
-    let info = ImageInfo::new(PAGE, ColorType::BGRA8888, AlphaType::Premul, None);
-    let mut px = vec![0u8; (PAGE.0 * PAGE.1 * 4) as usize];
-    assert!(s.read_pixels(&info, &mut px, PAGE.0 as usize * 4, (0, 0)));
-    px
+    common::pixels(PAGE, |c| draw_page(c, dark))
 }
 
 /// The page, in a light or a dark theme.

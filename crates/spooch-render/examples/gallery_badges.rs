@@ -5,13 +5,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use skia_safe::{AlphaType, ColorType, Data, EncodedImageFormat, ImageInfo, images};
+mod common;
+
+use skia_safe::AlphaType;
 use spooch_render::{Document, SyncBadge};
 
 fn main() {
-    let out = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "gallery-badges.png".into());
+    let out = common::out("gallery-badges.png");
     let (w, h) = (640u32, 400u32);
     let px: Vec<u8> = (0..w * h)
         .flat_map(|i| {
@@ -44,9 +44,5 @@ fn main() {
         d.set_gallery_thumb(id, 160, 100, &thumb);
     }
     let (px, _) = d.render_window();
-    let info = ImageInfo::new((1000, 760), ColorType::BGRA8888, AlphaType::Premul, None);
-    let img = images::raster_from_data(&info, Data::new_copy(px), 1000 * 4).unwrap();
-    let png = img.encode(None, EncodedImageFormat::PNG, 100).unwrap();
-    std::fs::write(&out, png.as_bytes()).unwrap();
-    println!("wrote {out}");
+    common::save(&out, &common::image((1000, 760), px, AlphaType::Premul));
 }

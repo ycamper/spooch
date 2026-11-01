@@ -9,11 +9,10 @@ Use it
   Ctrl+Shift+2      capture: drag out an area, or click to take a monitor
   Ctrl+Shift+3      capture after a 3 second countdown
   Ctrl+Alt+Shift+2  reopen the last capture, marks and all
-  1 to 0            pick a tool; just start typing for a label
   Enter / Ctrl+C    copy        Ctrl+S  copy and save        Esc  cancel
-  Ctrl+E            open the capture in the editor window
 
-Settings are in settings.txt, which the tray menu opens.
+Open Settings from the tray icon's menu or the editor's gear.
+Full guide: https://github.com/ycamper/spooch
 
 Spooch is under the MIT or Apache 2.0 license, at your option.
 
