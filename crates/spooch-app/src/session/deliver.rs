@@ -53,13 +53,14 @@ impl Deliverable {
 
     /// Put the image on the clipboard with `copy`, then, when it carries a
     /// file, save it into `folder` without overwriting anything. `mark`
-    /// gets each step for the log. Every shell delivers this way.
+    /// gets each step for the log. Every shell delivers this way. Returns
+    /// what happened, for a toast.
     pub fn deliver(
         self,
         copy: impl FnOnce(Clip) -> Result<(), String>,
         folder: impl FnOnce() -> io::Result<PathBuf>,
         mark: &mut dyn FnMut(String),
-    ) {
+    ) -> &'static str {
         mark(format!("png {} KB", self.png.len() / 1024));
         let (w, h, counts) = (self.width, self.height, self.counts);
         let clip = Clip {
@@ -68,21 +69,45 @@ impl Deliverable {
             bgra: self.bgra,
             png: self.png,
         };
-        match copy(clip) {
-            Ok(()) => mark(format!("copied {w}x{h} with {counts} to the clipboard")),
-            Err(e) => mark(format!("clipboard failed: {e}")),
-        }
-        if let Some((stem, ext, bytes)) = self.file {
+        let copied = match copy(clip) {
+            Ok(()) => {
+                mark(format!("copied {w}x{h} with {counts} to the clipboard"));
+                true
+            }
+            Err(e) => {
+                mark(format!("clipboard failed: {e}"));
+                false
+            }
+        };
+        let saved = self.file.map(|(stem, ext, bytes)| {
             let saved =
                 folder().and_then(|dir| spooch_platform::save::write_new(&dir, &stem, ext, &bytes));
             match saved {
                 Ok(path) => {
                     spooch_platform::save::remember(&path);
-                    mark(format!("saved {}", path.display()))
+                    mark(format!("saved {}", path.display()));
+                    true
                 }
-                Err(e) => mark(format!("save failed: {e}")),
+                Err(e) => {
+                    mark(format!("save failed: {e}"));
+                    false
+                }
             }
-        }
+        });
+        outcome(copied, saved)
+    }
+}
+
+/// A toast's words for a copy that worked or not, and a save that did,
+/// didn't, or wasn't asked for.
+fn outcome(copied: bool, saved: Option<bool>) -> &'static str {
+    match (copied, saved) {
+        (true, None) => "Copied",
+        (true, Some(true)) => "Copied and saved",
+        (true, Some(false)) => "Copied, but couldn't save",
+        (false, None) => "Couldn't copy",
+        (false, Some(true)) => "Saved, but couldn't copy",
+        (false, Some(false)) => "Couldn't copy or save",
     }
 }
 
