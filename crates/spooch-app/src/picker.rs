@@ -140,11 +140,24 @@ impl Picker {
         }
     }
 
-    /// The loupe beside the pointer, from the frozen pixels `read` gives
-    /// for a desktop rectangle.
-    pub fn loupe(&self, read: impl FnOnce(IRect) -> Option<Vec<u8>>) -> Option<Panel> {
+    /// What to show over the frozen screen: the loupe beside the pointer,
+    /// from the frozen pixels `read` gives for a desktop rectangle, and
+    /// until the drag starts, a hint on the pointer's screen.
+    pub fn panels(&self, read: impl FnOnce(IRect) -> Option<Vec<u8>>) -> Vec<Panel> {
         let (screen, scale) = self.monitor_and_scale(self.pointer);
-        spooch_render::selecting_loupe(self.pointer, self.anchor, self.desktop, screen, scale, read)
+        let loupe = spooch_render::selecting_loupe(
+            self.pointer,
+            self.anchor,
+            self.desktop,
+            screen,
+            scale,
+            read,
+        );
+        let hint = self
+            .anchor
+            .is_none()
+            .then(|| spooch_render::picking_hint(screen, scale));
+        loupe.into_iter().chain(hint.flatten()).collect()
     }
 
     /// Start the editor on `area`, whose frozen pixels are `pixels`
@@ -201,6 +214,19 @@ mod tests {
                 (IRect::from_xywh(-2560, 717, 2560, 1440), 1.5),
             ],
         )
+    }
+
+    #[test]
+    fn a_hint_shows_on_the_pointer_s_screen_until_the_drag() {
+        let mut p = picker();
+        let black = |r: IRect| Some(vec![0; (r.width() * r.height() * 4) as usize]);
+        let shown = p.panels(black);
+        assert_eq!(shown.len(), 2, "loupe and hint");
+        let hint = shown[1].rect;
+        assert!(hint.top > 0 && hint.bottom < 200);
+        assert!((hint.left + hint.right - 2560).abs() <= 1, "centred");
+        p.press((100, 100));
+        assert_eq!(p.panels(black).len(), 1, "just the loupe");
     }
 
     #[test]

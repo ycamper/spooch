@@ -22,6 +22,12 @@ const ZOOM: f32 = 8.0;
 const OFFSET: f32 = 24.0;
 /// The readout line under the pixels.
 const READOUT: f32 = 22.0;
+/// Behind the loupe and the hint.
+const BACKING: Color4f = Color4f::new(0.08, 0.085, 0.1, 0.94);
+/// Their edge.
+const EDGE: Color4f = Color4f::new(1.0, 1.0, 1.0, 0.35);
+/// What picking takes, until the drag starts.
+const HINT: &str = "Drag an area, or click for the whole screen \u{b7} Esc cancels";
 
 /// While the area is being picked: the loupe round `pointer` on `screen`
 /// (its monitor), for a shell to blend. `read` gives the frozen pixels of
@@ -149,8 +155,7 @@ pub(crate) fn loupe(
         let (fw, fh) = (w as f32, h as f32);
         let radius = 6.0 * s;
         let outer = RRect::new_rect_xy(Rect::from_wh(fw, fh), radius, radius);
-        let bg = fill(Color4f::new(0.08, 0.085, 0.1, 0.94));
-        canvas.draw_rrect(outer, &bg);
+        canvas.draw_rrect(outer, &fill(BACKING));
 
         // The pixels, each a square, clipped to the rounded top.
         canvas.save();
@@ -224,8 +229,31 @@ pub(crate) fn loupe(
                 &fg,
             );
         }
-        let edge = stroke(Color4f::new(1.0, 1.0, 1.0, 0.35), s);
-        canvas.draw_rrect(outer.with_inset((s * 0.5, s * 0.5)), &edge);
+        canvas.draw_rrect(outer.with_inset((s * 0.5, s * 0.5)), &stroke(EDGE, s));
+    }))
+}
+
+/// The hint at the top middle of `screen`, as a panel to blend over the
+/// overlay. `scale` is the display's pixels per screen pixel.
+pub fn picking_hint(screen: IRect, scale: f32) -> Option<Panel> {
+    let s = scale.max(1.0);
+    let font = Font::from_typeface(Label::ui_typeface()?, 13.0 * s);
+    let tw = font.measure_str(HINT, None).0;
+    let (w, h) = ((tw + 32.0 * s).ceil() as i32, (32.0 * s).round() as i32);
+    let rect = IRect::from_xywh(
+        screen.left + (screen.width() - w) / 2,
+        screen.top + (24.0 * s).round() as i32,
+        w,
+        h,
+    );
+    Some(crate::document::panel(rect, |canvas| {
+        let (fw, fh) = (w as f32, h as f32);
+        let outer = RRect::new_rect_xy(Rect::from_wh(fw, fh), fh / 2.0, fh / 2.0);
+        canvas.draw_rrect(outer, &fill(BACKING));
+        let y = crate::document::centred_baseline(&font, fh / 2.0);
+        let white = fill(Color4f::new(1.0, 1.0, 1.0, 1.0));
+        canvas.draw_str(HINT, ((fw - tw) / 2.0, y), &font, &white);
+        canvas.draw_rrect(outer.with_inset((s * 0.5, s * 0.5)), &stroke(EDGE, s));
     }))
 }
 

@@ -418,18 +418,22 @@ impl Document {
             }
 
             // The saved looks: each a dot in its colour and size, ringed
-            // when it's the look in use; empty ones dashed.
+            // when it's the look in use; then a dashed "+" to save one.
             let saved = self.quick_styles().unwrap_or_default();
-            for ((i, b), st) in layout.quick.iter().enumerate().zip(saved) {
+            for (i, b) in &layout.quick {
                 let rect = local(b);
                 let rr = RRect::new_rect_xy(rect.with_inset((s, s)), 6.0 * s, 6.0 * s);
-                if self.hovered == Some(Hit::Quick(i)) {
+                if self.hovered == Some(Hit::Quick(*i)) {
                     canvas.draw_rrect(rr, &fill(HOVER));
                 }
-                let Some(st) = st else {
+                let Some(st) = saved[*i] else {
                     let mut p = stroke(ICON, s);
                     p.set_path_effect(skia_safe::PathEffect::dash(&[2.0 * s, 2.0 * s], 0.0));
                     canvas.draw_rrect(rr, &p);
+                    let (c, arm) = (rect.center(), 4.0 * s);
+                    let plus = stroke(ICON, 1.5 * s);
+                    canvas.draw_line((c.x - arm, c.y), (c.x + arm, c.y), &plus);
+                    canvas.draw_line((c.x, c.y - arm), (c.x, c.y + arm), &plus);
                     continue;
                 };
                 let ring = if style == Some(st) { WHITE } else { PANEL_EDGE };
@@ -441,6 +445,23 @@ impl Document {
                 };
                 let radius = (2.5 + f32::from(st.size) * 1.1) * s;
                 canvas.draw_circle(rect.center(), radius, &fill(dot));
+            }
+
+            // "…": three dots, lit while opacity and the edge show.
+            if let Some(b) = &layout.extras {
+                let rect = local(b);
+                if self.styles.extras || self.hovered == Some(Hit::Extras) {
+                    let p = fill(HOVER);
+                    canvas.draw_rrect(RRect::new_rect_xy(rect, 6.0 * s, 6.0 * s), &p);
+                }
+                let dot = fill(ICON);
+                for k in [-1.0, 0.0, 1.0] {
+                    canvas.draw_circle(
+                        (rect.center_x() + k * 5.0 * s, rect.center_y()),
+                        1.6 * s,
+                        &dot,
+                    );
+                }
             }
 
             // "Aa" in the label font.
@@ -671,6 +692,8 @@ impl Document {
                 Some(_) => "Use this look   Shift+click to save over it".to_string(),
                 None => "Save the current look here".to_string(),
             },
+            Hit::Extras if self.styles.extras => "Hide opacity and edge".to_string(),
+            Hit::Extras => "Opacity and edge".to_string(),
             Hit::Font => {
                 let (style, _) = self.shown_style()?;
                 format!(
@@ -775,7 +798,8 @@ impl Document {
             | Hit::Slider(_)
             | Hit::Edge
             | Hit::Font
-            | Hit::Quick(_) => {
+            | Hit::Quick(_)
+            | Hit::Extras => {
                 let row = row?;
                 let b = row.place_of(hit)?;
                 // Above the row, or under it in the window.

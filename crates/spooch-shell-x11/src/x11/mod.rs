@@ -773,7 +773,8 @@ impl App {
     /// toast already up.
     fn show_toast(&mut self, text: &str, over: IRect) {
         self.hide_toast();
-        let ((w, h), pixels) = spooch_render::toast(text, 1.0, Some(badge::behind()));
+        let ((w, h), pixels) =
+            spooch_render::toast(text, self.desktop_scale(), Some(badge::behind()));
         let r = spooch_app::centred(over, w, h);
         let size = (w as u16, h as u16);
         match badge::Badge::show(self.screen(), (r.left, r.top), size, &pixels) {

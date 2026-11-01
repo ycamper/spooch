@@ -3,6 +3,7 @@
 //! moved to the editor window or cancelled.
 
 use super::*;
+use x11rb::protocol::xproto;
 
 pub(super) fn doc_point((x, y): (i32, i32)) -> DocPoint {
     DocPoint::new(x as f32, y as f32)
@@ -18,8 +19,8 @@ pub(super) struct Session {
     pub(super) back: Pixmap,
     /// The area being picked, and where the pointer is.
     pub(super) picker: Picker,
-    /// The loupe beside the pointer while selecting, from the core.
-    pub(super) loupe: Option<Panel>,
+    /// The loupe and the hint while picking, from the core.
+    pub(super) panels: Vec<Panel>,
     pub(super) editor: Option<EditSession>,
     /// What is currently drawn over the dimmed desktop (selection, border
     /// and chrome), so the next paint can restore it.
@@ -37,6 +38,19 @@ impl Session {
             Some(ed) => Some(region(ed)),
             None => self.picker.selection().map(Rect::from_irect),
         }
+    }
+
+    /// Repaint where the picker's panels are.
+    pub(super) fn damage_panels(&mut self) {
+        for p in &self.panels {
+            self.damage = self.damage.union(&Rect::from_irect(p.rect));
+        }
+    }
+
+    /// Take the picker's panels off, repainting where they were.
+    pub(super) fn clear_panels(&mut self) {
+        self.damage_panels();
+        self.panels.clear();
     }
 }
 
@@ -202,13 +216,9 @@ impl App {
             }
         }
         if s.editor.is_none() {
-            if let Some(old) = s.loupe.take() {
-                s.damage = s.damage.union(&Rect::from_irect(old.rect));
-            }
-            s.loupe = read_loupe(&self.conn, &mut self.transfer, s);
-            if let Some(new) = &s.loupe {
-                s.damage = s.damage.union(&Rect::from_irect(new.rect));
-            }
+            s.clear_panels();
+            s.panels = read_panels(&self.conn, &mut self.transfer, s);
+            s.damage_panels();
         }
         self.carry_out(effects, e.time);
         self.update_cursor();
@@ -439,9 +449,7 @@ impl App {
             }
         };
         s.damage = s.damage.union(&chrome_rect(&ed));
-        if let Some(l) = s.loupe.take() {
-            s.damage = s.damage.union(&Rect::from_irect(l.rect));
-        }
+        s.clear_panels();
         ed.set_waker(super::news_waker(self.clipboard.owner, self.wake));
         s.editor = Some(ed);
         true
@@ -524,12 +532,33 @@ impl App {
         self.hide_toast();
         let mut sw = Stopwatch::start();
         match self.open_session(&mut sw) {
-            Ok(session) => {
+            Ok(mut session) => {
+                session.panels = read_panels(&self.conn, &mut self.transfer, &session);
+                session.damage_panels();
                 self.session = Some(session);
                 sw.report("capture");
             }
             Err(e) => log::line(format!("capture failed: {e}")),
         }
+    }
+
+    /// The desktop's scale, from `Xft.dpi` in the root's resources, which
+    /// GNOME, KDE and Xfce set for HiDPI.
+    pub(super) fn desktop_scale(&self) -> f32 {
+        // At most 64 KiB, in 32-bit units.
+        let resources = self
+            .conn
+            .get_property(
+                false,
+                self.root,
+                xproto::AtomEnum::RESOURCE_MANAGER,
+                xproto::AtomEnum::STRING,
+                0,
+                1 << 14,
+            )
+            .ok()
+            .and_then(|c| c.reply().ok());
+        resources.map_or(1.0, |r| system::xft_scale(&r.value))
     }
 
     pub(super) fn open_session(&mut self, sw: &mut Stopwatch) -> Result<Session, String> {
@@ -637,11 +666,12 @@ impl App {
         sw.mark("grab input");
 
         let pointer = self.pointer();
-        // X11 has no per-monitor scale. Without RandR, the root is one
-        // monitor.
-        let mut screens: Vec<(IRect, f32)> = monitors.iter().map(|m| (m.irect(), 1.0)).collect();
+        // X11 has no per-monitor scale, only the desktop's. Without RandR,
+        // the root is one monitor.
+        let scale = self.desktop_scale();
+        let mut screens: Vec<(IRect, f32)> = monitors.iter().map(|m| (m.irect(), scale)).collect();
         if screens.is_empty() {
-            screens.push((IRect::from_wh(w.into(), h.into()), 1.0));
+            screens.push((IRect::from_wh(w.into(), h.into()), scale));
         }
         let picker = Picker::new(pointer, screens);
         Ok(Session {
@@ -651,7 +681,7 @@ impl App {
             dim,
             back,
             picker,
-            loupe: None,
+            panels: Vec::new(),
             editor: None,
             shown: Rect {
                 x: 0,
@@ -752,9 +782,7 @@ impl App {
             "editing {w}x{h} region in {:.1} ms",
             log::ms_since(started)
         ));
-        if let Some(l) = s.loupe.take() {
-            s.damage = s.damage.union(&Rect::from_irect(l.rect));
-        }
+        s.clear_panels();
         s.damage = s.damage.union(&chrome_rect(&ed));
         ed.set_waker(super::news_waker(self.clipboard.owner, self.wake));
         s.editor = Some(ed);
@@ -858,11 +886,12 @@ impl App {
             None if !s.shown.is_empty() => damage = damage.union(&s.shown),
             None => {}
         }
-        // The loupe is blended, so it's always redrawn whole from under it.
-        if !damage.is_empty()
-            && let Some(l) = &s.loupe
-        {
-            damage = damage.union(&Rect::from_irect(l.rect));
+        // The panels are blended, so each is redrawn whole from under it.
+        for p in &s.panels {
+            let r = Rect::from_irect(p.rect);
+            if !damage.intersect(&r).is_empty() {
+                damage = damage.union(&r);
+            }
         }
         let full = Rect {
             x: 0,
@@ -926,8 +955,8 @@ impl App {
                 composite_panels(conn, self.root, s.back, dst, argb, ed.doc.chrome());
             }
         }
-        if let (Some(l), Some(argb), Some(dst)) = (&s.loupe, self.argb_format, self.dim_format) {
-            composite_panels(conn, self.root, s.back, dst, argb, [l]);
+        if let (Some(argb), Some(dst)) = (self.argb_format, self.dim_format) {
+            composite_panels(conn, self.root, s.back, dst, argb, &s.panels);
         }
         let _ = conn.copy_area(
             s.back, s.window, self.gc, d.x, d.y, d.x, d.y, d.width, d.height,
@@ -942,13 +971,13 @@ impl App {
 }
 
 /// The loupe for where the pointer is now, drawn by the core from the
-/// frozen pixels round it, read back from the server.
-pub(super) fn read_loupe(
+/// frozen pixels round it, read back from the server, and the hint.
+pub(super) fn read_panels(
     conn: &RustConnection,
     transfer: &mut Transfer,
     s: &Session,
-) -> Option<Panel> {
-    s.picker.loupe(|r| {
+) -> Vec<Panel> {
+    s.picker.panels(|r| {
         transfer
             .read(
                 conn,

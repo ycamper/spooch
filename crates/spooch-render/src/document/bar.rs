@@ -71,6 +71,8 @@ pub enum Action {
     Gallery(super::GalleryAction),
     /// Open the settings window.
     Settings,
+    /// A press on the capture's name, which drags it out as a file.
+    DragOut,
 }
 
 const BAR_H: f32 = 32.0;
@@ -125,6 +127,7 @@ impl BarItem {
                 | BarItem::Copy
                 | BarItem::Save
                 | BarItem::Share
+                | BarItem::Name
         )
     }
 
@@ -139,7 +142,8 @@ impl BarItem {
             BarItem::Copy => "Enter or Ctrl+C",
             BarItem::Save => "Ctrl+S, without a dialog",
             BarItem::Share => concat!(super::keys::share_shortcut!(), "   upload and copy a link"),
-            BarItem::Name | BarItem::Size => "",
+            BarItem::Name => "Drag into another app as a file",
+            BarItem::Size => "",
         }
     }
 }
@@ -515,7 +519,8 @@ impl Document {
             BarItem::Copy => self.action = Some(Action::Copy),
             BarItem::Save => self.action = Some(Action::Save),
             BarItem::Share => self.action = Some(Action::Share),
-            BarItem::Name | BarItem::Size => {}
+            BarItem::Name => self.action = Some(Action::DragOut),
+            BarItem::Size => {}
         }
     }
 
@@ -535,7 +540,7 @@ impl Document {
                 let rect = Rect::from(*ir).with_offset(-origin);
                 let hover = hovered == Some(*item);
                 let (bg, fg) = match item {
-                    BarItem::Name => (Some(FIELD), TEXT),
+                    BarItem::Name => (Some(if hover { BUTTON } else { FIELD }), TEXT),
                     BarItem::FrameTitle
                         if self.frame_title().is_empty() && !self.editing_title() =>
                     {
@@ -682,11 +687,11 @@ mod tests {
         assert_eq!(d.take_action(), None, "handed out once");
         d.begin_drag(centre(item(&d, BarItem::Save)));
         assert_eq!(d.take_action(), Some(Action::Save));
-        // The name and size aren't buttons, but still swallow the press.
+        // The name is a handle for dragging the capture out.
         let name = centre(item(&d, BarItem::Name));
-        assert_eq!(d.cursor_at(name), Cursor::Arrow);
+        assert_eq!(d.cursor_at(name), Cursor::Hand);
         assert!(!d.begin_drag(name));
-        assert_eq!(d.take_action(), None);
+        assert_eq!(d.take_action(), Some(Action::DragOut));
     }
 
     #[test]

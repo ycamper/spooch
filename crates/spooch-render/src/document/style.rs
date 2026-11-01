@@ -179,6 +179,8 @@ pub struct Styles {
     pub(super) palette: u8,
     /// Whether the editor window shows its gallery.
     pub(super) gallery: bool,
+    /// Whether the style row shows opacity and the edge.
+    pub(super) extras: bool,
     /// The stickers picked lately, newest first, into `STICKERS`; the
     /// first is the one the tool stamps.
     pub(super) stickers: [u8; RECENT_STICKERS],
@@ -208,6 +210,7 @@ impl Default for Styles {
             framing: Framing::default(),
             palette: 0,
             gallery: true,
+            extras: false,
             stickers: FIRST_STICKERS
                 .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
             pinned: None,
@@ -738,6 +741,18 @@ impl Document {
     /// The saved looks the row shows.
     pub(super) fn quick_styles(&self) -> Option<[Option<Style>; QUICK_STYLES]> {
         self.quick_tool().map(|t| self.styles.quick[tool_index(t)])
+    }
+
+    /// The saved-look slots on the row: each filled one, and the first
+    /// empty one to save into.
+    pub(super) fn shown_quick_slots(&self) -> Vec<usize> {
+        let Some(saved) = self.quick_styles() else {
+            return Vec::new();
+        };
+        let first_empty = saved.iter().position(Option::is_none);
+        (0..QUICK_STYLES)
+            .filter(|&i| saved[i].is_some() || Some(i) == first_empty)
+            .collect()
     }
 
     /// A click on saved look `i`: use it, or keep the current look there
@@ -1654,6 +1669,7 @@ mod tests {
     #[test]
     fn outlines_get_thicker_and_thinner() {
         let (mut d, _) = placed();
+        d.styles.extras = true;
         // The outline slider sits after the edge button.
         let row = d.row_layout().unwrap();
         let track = row.outline.expect("arrows have an outline slider");
