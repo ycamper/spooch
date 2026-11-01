@@ -18,7 +18,7 @@ pub use document::{
     load_frames, thumbnail,
 };
 pub use select::{OUTSIDE_BRIGHTNESS, nudge_pointer, selecting_loupe, selection_frame};
-pub use sticker::{STICKERS, Sticker};
+pub use sticker::{Art, PointerShape, STICKERS, Sticker};
 
 use crate::document::{fill, stroke};
 use std::cell::RefCell;

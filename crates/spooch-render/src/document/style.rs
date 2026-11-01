@@ -2,7 +2,7 @@
 //! so outputs stay consistent (opacity is a 5% slider). Each tool keeps its
 //! last style; picking one restyles the selected marks too.
 
-use skia_safe::{Color4f, Point};
+use skia_safe::{Color4f, Point, Rect};
 
 use super::frame::Frame;
 use super::theme::hex;
@@ -794,6 +794,12 @@ impl Document {
             self.checkpoint();
             for i in swap {
                 if let Some(Mark::Sticker(s)) = self.marks.get_mut(i) {
+                    // Same middle and area, in the new sticker's shape.
+                    let r = s.rect.sorted();
+                    let side = (r.width() * r.height()).sqrt();
+                    let (w, h) = crate::sticker::sticker_size(name, side);
+                    let c = r.center();
+                    s.rect = Rect::from_xywh(c.x - w / 2.0, c.y - h / 2.0, w, h);
                     s.name = name;
                 }
             }

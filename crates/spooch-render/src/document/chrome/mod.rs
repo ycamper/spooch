@@ -10,6 +10,7 @@ use skia_safe::{AlphaType, Canvas, Font, IRect, Point, Rect};
 use super::bar::BarItem;
 use super::style::{PALETTE, Row, Slider, Style};
 use super::{Document, Format, Gesture, HoverMark, Tool};
+use crate::sticker::STICKER_TABS;
 use crate::{Label, LabelFont};
 
 /// A floating piece of chrome: where it goes on the desktop, and its
@@ -63,6 +64,8 @@ const STICKER_BUTTON: f32 = 26.0;
 const STICKER_GAP: f32 = 3.0;
 const STICKER_CELL: f32 = 40.0;
 const STICKER_COLUMNS: usize = 9;
+/// The grid's tabs.
+const STICKER_TAB_H: f32 = 28.0;
 /// Between the saved looks.
 const QUICK_GAP: f32 = 4.0;
 /// The move tab on the canvas's bottom edge.
@@ -70,6 +73,34 @@ const TAB_W: f32 = 40.0;
 const TAB_H: f32 = 12.0;
 const TIP_H: f32 = 22.0;
 const TIP_FONT: f32 = 12.0;
+
+/// The open sticker grid.
+pub(super) struct StickerGrid {
+    pub rect: IRect,
+    /// Its tabs, into `STICKER_TABS`.
+    pub tabs: Vec<IRect>,
+    /// The open tab's stickers: each one's index in `STICKERS`, and cell.
+    pub cells: Vec<(usize, IRect)>,
+}
+
+/// Tab `tab`'s stickers laid out in the grid, as their index in
+/// `STICKERS`, column, row and cells across; and how many rows they take.
+fn sticker_spots(tab: usize) -> (Vec<(usize, i32, i32, i32)>, i32) {
+    let mut spots = Vec::new();
+    let (mut c, mut r) = (0, 0);
+    for (i, (_, art)) in crate::STICKERS.iter().enumerate() {
+        if art.tab() != tab {
+            continue;
+        }
+        let span = art.cells() as i32;
+        if c > 0 && c + span > STICKER_COLUMNS as i32 {
+            (c, r) = (0, r + 1);
+        }
+        spots.push((i, c, r, span));
+        c += span;
+    }
+    (spots, r + 1)
+}
 
 /// A button on the chrome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,10 +118,12 @@ pub(super) enum Hit {
     /// The label font button.
     Font,
     /// A recently picked sticker on the style row, the button that opens
-    /// every sticker, and one in that grid (into `STICKERS`).
+    /// every sticker, one in that grid (into `STICKERS`), and one of the
+    /// grid's tabs (into `STICKER_TABS`).
     Sticker(usize),
     StickerMore,
     StickerOption(usize),
+    StickerTab(usize),
     /// The font dropdown under a label, and one of its fonts.
     FontPicker,
     FontOption(usize),
@@ -205,7 +238,7 @@ pub(super) struct ChromeKey {
     moving: bool,
     picker: Option<(IRect, Option<IRect>)>,
     stickers: [u8; super::style::RECENT_STICKERS],
-    sticker_menu: bool,
+    sticker_menu: Option<usize>,
     bar_menu: Option<super::bar::BarMenu>,
     loupe: Option<(i32, i32)>,
     maximized: bool,
@@ -475,19 +508,22 @@ impl Document {
     }
 
     /// The grid of every sticker, open under the style row (above it when
-    /// there's no room below), and each sticker's cell, in `STICKERS`
-    /// order.
-    pub(super) fn sticker_grid(&self) -> Option<(IRect, Vec<IRect>)> {
-        if !self.sticker_menu {
-            return None;
-        }
+    /// there's no room below): tabs across the top, then the open tab's
+    /// stickers. It's as tall as the fullest tab, so it doesn't jump when
+    /// the tab changes.
+    pub(super) fn sticker_grid(&self) -> Option<StickerGrid> {
+        let tab = self.sticker_menu?;
         let row = self.row_layout().filter(|r| r.more.is_some())?;
         let s = self.scale;
-        let n = crate::STICKERS.len();
-        let rows = n.div_ceil(STICKER_COLUMNS);
+        let (spots, _) = sticker_spots(tab);
+        let rows = (0..STICKER_TABS.len())
+            .map(|t| sticker_spots(t).1)
+            .max()
+            .unwrap_or(1);
         let (cell, pad) = ((STICKER_CELL * s).round() as i32, (6.0 * s).round() as i32);
+        let tab_h = (STICKER_TAB_H * s).round() as i32;
         let w = STICKER_COLUMNS as i32 * cell + 2 * pad;
-        let h = rows as i32 * cell + 2 * pad;
+        let h = tab_h + rows * cell + 3 * pad;
         let screen = self.screen();
         let gap = (4.0 * s).round() as i32;
         let below = row.rect.bottom + gap;
@@ -497,14 +533,26 @@ impl Document {
             row.rect.top - gap - h
         };
         let left = row.rect.left.min(screen.right - w).max(screen.left);
-        let grid = IRect::from_xywh(left, top, w, h);
-        let cells = (0..n)
-            .map(|i| {
-                let (c, r) = ((i % STICKER_COLUMNS) as i32, (i / STICKER_COLUMNS) as i32);
-                IRect::from_xywh(left + pad + c * cell, top + pad + r * cell, cell, cell)
+        let tab_w = (w - 2 * pad) / STICKER_TABS.len() as i32;
+        let tabs = (0..STICKER_TABS.len() as i32)
+            .map(|t| IRect::from_xywh(left + pad + t * tab_w, top + pad, tab_w, tab_h))
+            .collect();
+        let cells_top = top + 2 * pad + tab_h;
+        let cells = spots
+            .into_iter()
+            .map(|(i, c, r, span)| {
+                let x = left + pad + c * cell;
+                (
+                    i,
+                    IRect::from_xywh(x, cells_top + r * cell, span * cell, cell),
+                )
             })
             .collect();
-        Some((grid, cells))
+        Some(StickerGrid {
+            rect: IRect::from_xywh(left, top, w, h),
+            tabs,
+            cells,
+        })
     }
 
     /// The one label the font dropdown is for: the label being typed, or
@@ -621,10 +669,13 @@ impl Document {
         {
             return Some(Hit::MenuOption(i));
         }
-        if let Some((_, cells)) = self.sticker_grid()
-            && let Some(i) = cells.iter().position(|r| contains(r, p))
-        {
-            return Some(Hit::StickerOption(i));
+        if let Some(g) = self.sticker_grid() {
+            if let Some(t) = g.tabs.iter().position(|r| contains(r, p)) {
+                return Some(Hit::StickerTab(t));
+            }
+            if let Some((i, _)) = g.cells.iter().find(|(_, r)| contains(r, p)) {
+                return Some(Hit::StickerOption(*i));
+            }
         }
         if let Some(picker) = self.picker_layout() {
             if let Some(i) = picker.options.iter().position(|r| contains(r, p)) {
@@ -663,9 +714,7 @@ impl Document {
         }
         self.bar_menu_layout(&self.bar_layout())
             .is_some_and(|(_, list, _)| contains(&list, p))
-            || self
-                .sticker_grid()
-                .is_some_and(|(grid, _)| contains(&grid, p))
+            || self.sticker_grid().is_some_and(|g| contains(&g.rect, p))
             || self
                 .picker_layout()
                 .is_some_and(|k| contains(&k.pill, p) || k.list.is_some_and(|l| contains(&l, p)))
@@ -702,8 +751,13 @@ impl Document {
             self.font_menu = false;
             self.chrome_key = None;
         }
-        if self.sticker_menu && !matches!(hit, Some(Hit::StickerMore | Hit::StickerOption(_))) {
-            self.sticker_menu = false;
+        if self.sticker_menu.is_some()
+            && !matches!(
+                hit,
+                Some(Hit::StickerMore | Hit::StickerOption(_) | Hit::StickerTab(_))
+            )
+        {
+            self.sticker_menu = None;
             self.chrome_key = None;
         }
         if !self.on_chrome(p) {
@@ -721,13 +775,21 @@ impl Document {
                     self.pick_sticker(index);
                 }
             }
+            // The grid opens on the tab of the sticker the tool stamps.
             Some(Hit::StickerMore) => {
-                self.sticker_menu = !self.sticker_menu;
+                self.sticker_menu = match self.sticker_menu {
+                    Some(_) => None,
+                    None => Some(crate::sticker::art_of(self.sticker()).map_or(0, |a| a.tab())),
+                };
+                self.chrome_key = None;
+            }
+            Some(Hit::StickerTab(t)) => {
+                self.sticker_menu = Some(t);
                 self.chrome_key = None;
             }
             Some(Hit::StickerOption(i)) => {
                 self.pick_sticker(i);
-                self.sticker_menu = false;
+                self.sticker_menu = None;
                 self.chrome_key = None;
             }
             Some(Hit::FontOption(i)) => {

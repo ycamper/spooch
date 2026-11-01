@@ -1089,13 +1089,19 @@ fn a_marker_over_a_dark_page_lightens_it() {
     assert!(p[2] > 120 && p[1] > 100 && p[0] < p[2], "marker {p:?}");
 }
 
-#[test]
-fn stickers_stamp_size_swap_and_keep() {
+/// A white page big enough for stickers, snapping off.
+fn sticker_doc() -> Document {
     let (w, h) = (600u32, 400u32);
     let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
     let mut d =
         with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
     d.set_modifiers(false, true);
+    d
+}
+
+#[test]
+fn stickers_stamp_size_swap_and_keep() {
+    let mut d = sticker_doc();
     let last = |d: &Document| match d.marks.last() {
         Some(Mark::Sticker(s)) => *s,
         _ => panic!("no sticker"),
@@ -1149,6 +1155,59 @@ fn stickers_stamp_size_swap_and_keep() {
     assert!(
         matches!(back.marks.last(), Some(Mark::Sticker(s)) if s.name == "thumbs_up" && s.rect == r)
     );
+}
+
+#[test]
+fn the_sticker_grid_has_a_tab_per_kind() {
+    let mut d = sticker_doc();
+    d.set_tool(Tool::Sticker);
+    d.sticker_menu = Some(1);
+    let g = d.sticker_grid().unwrap();
+    assert_eq!(g.tabs.len(), 3);
+    assert_eq!(g.cells.len(), 8);
+    assert!(
+        g.cells
+            .iter()
+            .all(|(i, _)| matches!(crate::STICKERS[*i].1, crate::Art::Stamp(..)))
+    );
+    // A click on a tab shows it, and the grid keeps its size.
+    let (tall, tab) = (g.rect.height(), g.tabs[2]);
+    let mid = |a: i32, b: i32| (a + b) as f32 / 2.0;
+    click(&mut d, mid(tab.left, tab.right), mid(tab.top, tab.bottom));
+    assert_eq!(d.sticker_menu, Some(2));
+    let g = d.sticker_grid().unwrap();
+    assert_eq!((g.cells.len(), g.rect.height()), (4, tall));
+}
+
+#[test]
+fn stamps_are_wide_and_lean_and_swaps_keep_the_area() {
+    let mut d = sticker_doc();
+    let at = |name: &str| {
+        crate::STICKERS
+            .iter()
+            .position(|(n, _)| *n == name)
+            .unwrap()
+    };
+    let last = |d: &Document| match d.marks.last() {
+        Some(Mark::Sticker(s)) => *s,
+        _ => panic!("no sticker"),
+    };
+    d.set_tool(Tool::Sticker);
+    assert!(d.pick_sticker(at("stamp_approved")));
+    click(&mut d, 150.0, 150.0);
+    let s = last(&d);
+    let r = s.rect;
+    assert!(r.width() > 2.0 * r.height(), "{r:?}");
+    assert!((r.width() * r.height() - 96.0 * 96.0).abs() < 1.0);
+    assert_eq!(r.center(), Point::new(150.0, 150.0));
+    assert_eq!(s.angle, crate::sticker::STAMP_TILT);
+    // Selected and swapped for an emoji: square, same middle and area.
+    d.set_tool(Tool::Arrow);
+    click(&mut d, 150.0, 150.0);
+    assert!(d.pick_sticker(at("fire")));
+    let r = last(&d).rect;
+    assert!((r.width() - r.height()).abs() < 0.01, "{r:?}");
+    assert!((r.width() - 96.0).abs() < 0.01 && r.center() == Point::new(150.0, 150.0));
 }
 
 #[test]
