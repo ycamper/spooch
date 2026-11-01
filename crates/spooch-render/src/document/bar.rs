@@ -12,11 +12,6 @@ use super::theme::{
     draw_list, ellipsize, rounded_panel, swatch, tick_box,
 };
 
-/// `rect` lit as the entry in use.
-fn fill_rrect_at(canvas: &skia_safe::Canvas, rect: Rect, radius: f32) {
-    canvas.draw_rrect(RRect::new_rect_xy(rect, radius, radius), &fill(SELECTED));
-}
-
 /// Something on the bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarItem {
@@ -45,7 +40,7 @@ enum Entry {
 }
 
 /// The shadows' names on the Frame menu's chips.
-const SHADOW_CHIPS: [&str; 5] = ["Auto", "None", "Soft", "Normal", "Deep"];
+const SHADOW_CHIPS: [&str; super::SHADOWS.len()] = ["Auto", "None", "Soft", "Normal", "Deep"];
 /// The label before a row of chips.
 const CHIP_LABEL: f32 = 64.0;
 
@@ -524,7 +519,6 @@ impl Document {
         panel(list, |canvas| {
             let line = super::theme::stroke(DIVIDER, s);
             let width = list.width() as f32;
-            let lit = |rect: Rect| fill_rrect_at(canvas, rect, 5.0 * s);
             draw_list(canvas, list, rows, None, hovered, s, |i, rect, _| {
                 let Some(&e) = entries.get(i) else { return };
                 let on = self.in_use(e);
@@ -547,7 +541,8 @@ impl Document {
                     canvas.draw_str(label, (10.0 * s, baseline), font, &fill(MUTED));
                 }
                 if on && e != Entry::Pin {
-                    lit(rect);
+                    let r = 5.0 * s;
+                    canvas.draw_rrect(RRect::new_rect_xy(rect, r, r), &fill(SELECTED));
                 }
                 let p = fill(if on { TEXT } else { MUTED });
                 match e {
