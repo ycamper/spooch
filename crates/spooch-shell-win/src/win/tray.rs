@@ -10,9 +10,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, DestroyIcon, DestroyMenu, GetCursorPos,
-    GetSystemMetrics, HICON, ICONINFO, MF_CHECKED, MF_DISABLED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    MF_UNCHECKED, PostMessageW, SM_CXSMICON, SetForegroundWindow, TPM_BOTTOMALIGN, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_NULL,
+    GetSystemMetrics, HICON, ICONINFO, MF_DISABLED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    PostMessageW, SM_CXSMICON, SetForegroundWindow, TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_NULL,
 };
 use windows::core::HSTRING;
 
@@ -68,17 +68,14 @@ impl Tray {
                         label,
                         key,
                         command,
-                        checked,
                     } => {
                         let text = match key {
                             Some(k) => format!("{label}\t{k}"),
                             None => label.clone(),
                         };
-                        let flags = match (command, checked) {
-                            (None, _) => MF_STRING | MF_DISABLED | MF_GRAYED,
-                            (Some(_), Some(true)) => MF_STRING | MF_CHECKED,
-                            (Some(_), Some(false)) => MF_STRING | MF_UNCHECKED,
-                            (Some(_), None) => MF_STRING,
+                        let flags = match command {
+                            None => MF_STRING | MF_DISABLED | MF_GRAYED,
+                            Some(_) => MF_STRING,
                         };
                         let id = match command {
                             Some(c) => {

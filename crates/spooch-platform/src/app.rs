@@ -41,13 +41,12 @@ pub enum Signed {
 /// One line of the tray menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuItem {
-    /// `label`, its shortcut if it has one, what it does (`None` greys it
-    /// out), and a tick for switches.
+    /// `label`, its shortcut if it has one, and what it does (`None`
+    /// greys it out).
     Entry {
         label: String,
         key: Option<String>,
         command: Option<Command>,
-        checked: Option<bool>,
     },
     Separator,
 }
@@ -58,36 +57,21 @@ impl MenuItem {
             label: label.into(),
             key: None,
             command,
-            checked: None,
         }
     }
 }
 
-/// The tray menu: capturing, the editor, the switches and the settings
-/// window, sharing, and Quit. Recents
-/// are browsed in the editor's gallery. `login_label` is the OS's wording for starting
-/// with the computer ("Start when I sign in" on Windows); without
-/// `captures` there's nothing for the editor to open yet.
-pub fn tray_menu(
-    settings: &Settings,
-    captures: bool,
-    launch_at_login: bool,
-    login_label: &str,
-    sharing: &Signed,
-) -> Vec<MenuItem> {
+/// The tray menu: capturing, the editor, saved pictures, the settings
+/// window and Quit. Switches and the account are in the settings window,
+/// Recents in the editor's gallery. Without `captures` there's nothing for
+/// the editor to open yet.
+pub fn tray_menu(settings: &Settings, captures: bool) -> Vec<MenuItem> {
     let keyed = |label: String, key: Option<String>, command: Command| MenuItem::Entry {
         label,
         key,
         command: Some(command),
-        checked: None,
     };
-    let switch = |label: &str, on: bool, command: Command| MenuItem::Entry {
-        label: label.into(),
-        key: None,
-        command: Some(command),
-        checked: Some(on),
-    };
-    let mut items = vec![
+    vec![
         keyed(
             "Capture".into(),
             Some(settings.capture.to_string()),
@@ -101,41 +85,9 @@ pub fn tray_menu(
         MenuItem::entry("Open editor", captures.then_some(Command::OpenEditor)),
         MenuItem::entry("Show saved pictures", Some(Command::ShowSaved)),
         MenuItem::Separator,
-        switch(
-            "Use the Print Screen key",
-            settings.print_screen,
-            Command::TogglePrintScreen,
-        ),
-        switch(login_label, launch_at_login, Command::ToggleLaunchAtLogin),
         MenuItem::entry("Settings...", Some(Command::OpenSettings)),
-        MenuItem::Separator,
-    ];
-    // The account: who's signed in, greyed out, above what to do with it.
-    match sharing {
-        Signed::Out => {
-            items.push(MenuItem::entry(
-                "Create account...",
-                Some(Command::CreateAccount),
-            ));
-            items.push(MenuItem::entry("Sign in...", Some(Command::SignIn)));
-        }
-        Signed::In(account) => {
-            let who = match account {
-                Some(name) => format!("Signed in as {name}"),
-                None => "Signed in".into(),
-            };
-            items.push(MenuItem::entry(who, None));
-            items.push(switch("Sync captures", settings.sync, Command::ToggleSync));
-            items.push(MenuItem::entry(
-                "Set password...",
-                Some(Command::SetPassword),
-            ));
-            items.push(MenuItem::entry("Sign out", Some(Command::SignOut)));
-        }
-    }
-    items.push(MenuItem::Separator);
-    items.push(MenuItem::entry("Quit Spooch", Some(Command::Quit)));
-    items
+        MenuItem::entry("Quit Spooch", Some(Command::Quit)),
+    ]
 }
 
 /// Something the shell has to do.
@@ -357,14 +309,11 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_lists_shortcuts_switches_and_quit() {
-        let s = Settings {
-            print_screen: true,
-            ..Settings::default()
-        };
-        let items = tray_menu(&s, false, false, "Start when I sign in", &Signed::Out);
-        assert_eq!(items.len(), 13);
-        for command in [Command::ShowSaved, Command::CreateAccount] {
+    fn the_menu_lists_shortcuts_settings_and_quit() {
+        let s = Settings::default();
+        let items = tray_menu(&s, false);
+        assert_eq!(items.len(), 7);
+        for command in [Command::ShowSaved, Command::OpenSettings] {
             assert!(
                 items.iter().any(
                     |i| matches!(i, MenuItem::Entry { command: Some(c), .. } if *c == command)
@@ -372,13 +321,6 @@ mod tests {
                 "{command:?}"
             );
         }
-        assert!(items.iter().any(|i| matches!(
-            i,
-            MenuItem::Entry {
-                command: Some(Command::SignIn),
-                ..
-            }
-        )));
         let MenuItem::Entry { label, key, .. } = &items[0] else {
             panic!("not an entry")
         };
@@ -393,14 +335,6 @@ mod tests {
             (label.as_str(), key.as_deref()),
             ("Capture in 3 seconds", Some("Ctrl+Shift+3"))
         );
-        assert!(items.iter().any(|i| matches!(
-            i,
-            MenuItem::Entry {
-                command: Some(Command::TogglePrintScreen),
-                checked: Some(true),
-                ..
-            }
-        )));
         // Nothing kept yet: Open editor is there, greyed out.
         assert!(items.iter().any(|i| matches!(
             i,
@@ -413,31 +347,6 @@ mod tests {
                 ..
             })
         ));
-    }
-
-    #[test]
-    fn signed_in_the_menu_says_who_and_offers_sign_out() {
-        let s = Settings::default();
-        let items = tray_menu(&s, true, false, "x", &Signed::In(Some("mark".into())));
-        let at = items
-            .iter()
-            .position(|i| matches!(i, MenuItem::Entry { label, command: None, .. } if label == "Signed in as mark"))
-            .unwrap();
-        let commands: Vec<_> = items[at + 1..at + 4]
-            .iter()
-            .map(|i| match i {
-                MenuItem::Entry { command, .. } => command.clone(),
-                MenuItem::Separator => None,
-            })
-            .collect();
-        assert_eq!(
-            commands,
-            [
-                Some(Command::ToggleSync),
-                Some(Command::SetPassword),
-                Some(Command::SignOut)
-            ]
-        );
     }
 
     #[test]
