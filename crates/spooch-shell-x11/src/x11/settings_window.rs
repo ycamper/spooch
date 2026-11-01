@@ -5,18 +5,21 @@
 use spooch_app::{SettingsChange, SettingsFacts, SettingsForm};
 use spooch_render::skia_safe::Point;
 use spooch_render::{SettingsEvent, SettingsPage};
+use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
+use x11rb::properties::{WmSizeHints, WmSizeHintsSpecification};
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
-    Atom, AtomEnum, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, EventMask, InputFocus,
-    PropMode, Window, WindowClass,
+    Atom, AtomEnum, ConnectionExt as _, CreateWindowAux, EventMask, PropMode, Window, WindowClass,
 };
 use x11rb::wrapper::ConnectionExt as _;
 
 use super::{App, log, system};
 
 /// What X11 desktops call starting with the computer.
-pub(super) const LOGIN_LABEL: &str = "Start when I log in";
+const LOGIN_LABEL: &str = "Start when I log in";
+/// The window's background while it waits for its first paint.
+const BACKDROP: u32 = 0x1c1d21;
 
 /// The open settings window.
 pub(super) struct SettingsWindow {
@@ -41,18 +44,15 @@ impl App {
         })
     }
 
-    /// Open the window, or raise it if it's open.
+    /// Open the window, or bring it to the front if it's open.
     pub(super) fn open_settings(&mut self) {
-        if let Some(sw) = &self.settings_window {
-            let w = sw.window;
+        if let Some(w) = self.settings_window.as_ref().map(|sw| sw.window) {
             self.refresh_settings();
-            let _ = self.conn.configure_window(
-                w,
-                &ConfigureWindowAux::new().stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-            );
-            let _ = self
-                .conn
-                .set_input_focus(InputFocus::PARENT, w, x11rb::CURRENT_TIME);
+            // The window manager raises, restores and focuses it.
+            match super::atom(&self.conn, b"_NET_ACTIVE_WINDOW") {
+                Ok(active) => self.send_to_root(w, active, [1, CURRENT_TIME, 0, 0, 0]),
+                Err(e) => log::line(format!("settings window: {e}")),
+            }
             return;
         }
         match self.make_settings() {
@@ -96,7 +96,7 @@ impl App {
                 WindowClass::INPUT_OUTPUT,
                 x11rb::COPY_FROM_PARENT,
                 &CreateWindowAux::new()
-                    .background_pixel(0x1c1d21)
+                    .background_pixel(BACKDROP)
                     .event_mask(
                         EventMask::EXPOSURE
                             | EventMask::KEY_PRESS
@@ -121,19 +121,12 @@ impl App {
             AtomEnum::ATOM,
             &[delete],
         );
-        // WM_NORMAL_HINTS: position as asked, and the size fixed (the
-        // program-specified position, minimum and maximum size flags).
-        let (w32, h32) = (w as u32, h as u32);
-        let mut hints = [0u32; 18];
-        hints[0] = 4 | 16 | 32;
-        hints[5..9].copy_from_slice(&[w32, h32, w32, h32]);
-        let _ = self.conn.change_property32(
-            PropMode::REPLACE,
-            window,
-            AtomEnum::WM_NORMAL_HINTS,
-            AtomEnum::WM_SIZE_HINTS,
-            &hints,
-        );
+        // Where it was put, and one size only.
+        let mut hints = WmSizeHints::new();
+        hints.position = Some((WmSizeHintsSpecification::ProgramSpecified, r.left, r.top));
+        hints.min_size = Some((w, h));
+        hints.max_size = Some((w, h));
+        let _ = hints.set_normal_hints(&self.conn, window);
         self.set_title(window, "Spooch settings");
         self.conn.map_window(window).map_err(|e| e.to_string())?;
         Ok(SettingsWindow {
@@ -167,17 +160,18 @@ impl App {
                 sw.dirty |= sw.page.hover(None);
                 Vec::new()
             }
-            Event::ButtonPress(e) if e.event == w && e.detail == 1 => {
+            // Only the left button clicks; the wheel and others do nothing.
+            Event::ButtonPress(e) if e.event == w => {
+                if e.detail != 1 {
+                    return true;
+                }
                 sw.dirty = true;
                 sw.page.press(point(e.event_x, e.event_y))
             }
             Event::KeyPress(e) if e.event == w => {
                 let sym = self.keys.sym(e.detail);
                 match super::editor_key(&self.keys, sym, e.detail) {
-                    Some(k) => {
-                        sw.dirty = true;
-                        sw.page.key(k, super::keys::mods(e.state))
-                    }
+                    Some(k) => sw.page.key(k, super::keys::mods(e.state)),
                     None => Vec::new(),
                 }
             }
@@ -186,6 +180,7 @@ impl App {
                 self.refresh_settings();
                 return true;
             }
+            Event::FocusOut(e) if e.event == w => return true,
             Event::ClientMessage(e)
                 if e.window == w
                     && e.type_ == sw.protocols
@@ -246,23 +241,9 @@ impl App {
             return;
         }
         sw.dirty = false;
-        let (w, h) = sw.size;
         let (pixels, stride) = sw.page.render();
-        let row = usize::from(w) * 4;
-        let _ = self.transfer.put(
-            &self.conn,
-            sw.window,
-            self.gc,
-            self.depth,
-            (0, 0),
-            (w, h),
-            |buf| {
-                for (y, out) in buf.chunks_exact_mut(row).enumerate() {
-                    if let Some(src) = pixels.get(y * stride..y * stride + row) {
-                        out.copy_from_slice(src);
-                    }
-                }
-            },
+        let _ = self.transfer.put_rows(
+            &self.conn, sw.window, self.gc, self.depth, sw.size, pixels, stride,
         );
     }
 

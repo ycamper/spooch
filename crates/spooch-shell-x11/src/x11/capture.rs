@@ -243,4 +243,27 @@ impl Transfer {
         }
         Ok(())
     }
+
+    /// Fill `dst`, `size` big, from BGRA rows `stride` bytes apart: a
+    /// window the core draws whole.
+    #[allow(clippy::too_many_arguments)]
+    pub fn put_rows(
+        &mut self,
+        conn: &RustConnection,
+        dst: Drawable,
+        gc: Gcontext,
+        depth: u8,
+        size: (u16, u16),
+        pixels: &[u8],
+        stride: usize,
+    ) -> Result<(), String> {
+        let row = usize::from(size.0) * 4;
+        self.put(conn, dst, gc, depth, (0, 0), size, |buf| {
+            for (y, out) in buf.chunks_exact_mut(row).enumerate() {
+                if let Some(src) = pixels.get(y * stride..y * stride + row) {
+                    out.copy_from_slice(src);
+                }
+            }
+        })
+    }
 }

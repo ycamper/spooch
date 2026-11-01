@@ -215,37 +215,66 @@ impl Settings {
         (s, problems)
     }
 
-    /// Each setting's key and its value as the file writes it, in the
-    /// file's order.
-    fn entries(&self) -> [(&'static str, String); 9] {
+    /// Each setting as its key, the comment above it in a new file, and
+    /// its value as the file writes it, in the file's order.
+    fn entries(&self) -> [(&'static str, &'static str, String); 9] {
         [
-            ("capture", self.capture.to_string()),
-            ("reopen", self.reopen.to_string()),
-            ("quit", self.quit_text()),
-            ("print_screen", self.print_screen.to_string()),
-            ("countdown", optional_text(self.countdown)),
-            ("countdown_seconds", self.countdown_seconds.to_string()),
-            ("palette", self.palette.clone()),
-            ("share_server", self.share_server.clone()),
-            ("sync", self.sync.to_string()),
+            (
+                "capture",
+                "Freeze the screen and select a region.",
+                self.capture.to_string(),
+            ),
+            (
+                "reopen",
+                "Reopen the newest capture from Recents, marks still editable.",
+                self.reopen.to_string(),
+            ),
+            (
+                "quit",
+                "Quit Spooch from a shortcut, or none. The tray menu has Quit too.",
+                self.quit_text(),
+            ),
+            (
+                "print_screen",
+                "Also capture with the Print Screen key on its own (true or false).",
+                self.print_screen.to_string(),
+            ),
+            (
+                "countdown",
+                "Capture after a countdown, to catch open menus and hover states, or none.\n\
+                 Press it again during the countdown to call it off.",
+                optional_text(self.countdown),
+            ),
+            (
+                "countdown_seconds",
+                "How long the countdown runs, 1 to 10 seconds.",
+                self.countdown_seconds.to_string(),
+            ),
+            (
+                "palette",
+                "The mark colours new captures start with: vivid, soft or ink. The style\n\
+                 row's colour button switches them too.",
+                self.palette.clone(),
+            ),
+            (
+                "share_server",
+                "Where captures are shared to. Sign in from the tray menu.",
+                self.share_server.clone(),
+            ),
+            (
+                "sync",
+                "Sync captures with your account (true or false), once signed in. Nothing\n\
+                 is uploaded until this is on.",
+                self.sync.to_string(),
+            ),
         ]
     }
 
     /// The settings as a commented file.
     pub fn to_text(&self) -> String {
         let mut out = HEADER.to_string();
-        for (key, value) in self.entries() {
-            let doc = DOCS.iter().find(|(k, _)| *k == key).map_or("", |(_, d)| d);
-            out.push('\n');
-            for line in doc.lines() {
-                out.push_str("# ");
-                out.push_str(line);
-                out.push('\n');
-            }
-            out.push_str(&format!(
-                "{key} = {value}
-"
-            ));
+        for (key, doc, value) in self.entries() {
+            push_entry(&mut out, key, doc, &value);
         }
         out
     }
@@ -262,39 +291,21 @@ impl Settings {
             let known = (!trimmed.starts_with('#'))
                 .then(|| trimmed.split_once('='))
                 .flatten()
-                .and_then(|(key, _)| entries.iter().position(|(k, _)| *k == key.trim()));
+                .and_then(|(key, _)| entries.iter().position(|(k, ..)| *k == key.trim()));
             match known {
                 Some(i) => {
                     seen[i] = true;
                     let indent = &line[..line.len() - trimmed.len()];
-                    let (key, value) = &entries[i];
+                    let (key, _, value) = &entries[i];
                     out.push_str(&format!("{indent}{key} = {value}"));
                 }
                 None => out.push_str(line),
             }
             out.push('\n');
         }
-        let missing: Vec<usize> = (0..entries.len()).filter(|&i| !seen[i]).collect();
-        if !missing.is_empty() {
-            let full = self.to_text();
-            let blocks: Vec<&str> = full
-                .split(
-                    "
-
-",
-                )
-                .collect();
-            for i in missing {
-                let key = entries[i].0;
-                let prefix = format!("{key} = ");
-                if let Some(block) = blocks
-                    .iter()
-                    .find(|b| b.lines().any(|l| l.starts_with(&prefix)))
-                {
-                    out.push('\n');
-                    out.push_str(block.trim_end());
-                    out.push('\n');
-                }
+        for ((key, doc, value), seen) in entries.iter().zip(seen) {
+            if !seen {
+                push_entry(&mut out, key, doc, value);
             }
         }
         out
@@ -375,45 +386,16 @@ const HEADER: &str = "# Spooch settings. Spooch reloads this file when it's save
 # a digit, F1 to F24, or PrintScreen. For example: Ctrl+Shift+2, Alt+F9.
 ";
 
-/// The comment above each setting in a new file.
-const DOCS: [(&str, &str); 9] = [
-    ("capture", "Freeze the screen and select a region."),
-    (
-        "reopen",
-        "Reopen the newest capture from Recents, marks still editable.",
-    ),
-    (
-        "quit",
-        "Quit Spooch from a shortcut, or none. The tray menu has Quit too.",
-    ),
-    (
-        "print_screen",
-        "Also capture with the Print Screen key on its own (true or false).",
-    ),
-    (
-        "countdown",
-        "Capture after a countdown, to catch open menus and hover states, or none.\n\
-         Press it again during the countdown to call it off.",
-    ),
-    (
-        "countdown_seconds",
-        "How long the countdown runs, 1 to 10 seconds.",
-    ),
-    (
-        "palette",
-        "The mark colours new captures start with: vivid, soft or ink. The style\n\
-         row's colour button switches them too.",
-    ),
-    (
-        "share_server",
-        "Where captures are shared to. Sign in from the tray menu.",
-    ),
-    (
-        "sync",
-        "Sync captures with your account (true or false), once signed in. Nothing\n\
-         is uploaded until this is on.",
-    ),
-];
+/// A setting after a blank line, with its comment.
+fn push_entry(out: &mut String, key: &str, doc: &str, value: &str) {
+    out.push('\n');
+    for line in doc.lines() {
+        out.push_str("# ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&format!("{key} = {value}\n"));
+}
 
 /// What a global shortcut does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

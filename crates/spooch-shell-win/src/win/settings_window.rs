@@ -311,17 +311,14 @@ extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         // Alt combinations come as system keys; take them while a
         // shortcut listens, so Alt doesn't open the window menu.
         WM_KEYDOWN | WM_SYSKEYDOWN => {
-            let recording = with_window(|w| w.page.recording()) == Some(true);
-            let key = editor_key(wparam.0 as u16);
-            if let (true, Some(key)) = (recording, key) {
+            if with_window(|w| w.page.recording()) != Some(true) {
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            }
+            if let Some(key) = editor_key(wparam.0 as u16) {
                 let events = with_window(|w| w.page.key(key, mods_now())).unwrap_or_default();
                 queue(hwnd, events);
-                return LRESULT(0);
             }
-            if recording {
-                return LRESULT(0);
-            }
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+            LRESULT(0)
         }
         // Windows sends Print Screen only as it's let go.
         WM_KEYUP if wparam.0 as u16 == VK_SNAPSHOT.0 => {

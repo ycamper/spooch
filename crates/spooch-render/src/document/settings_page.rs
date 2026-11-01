@@ -311,7 +311,8 @@ impl SettingsPage {
         vec![SettingsEvent::Recording(false)]
     }
 
-    /// The page as premultiplied BGRA rows, and their stride.
+    /// The page as premultiplied BGRA rows, and their stride; nothing if
+    /// Skia couldn't make a surface.
     pub fn render(&mut self) -> (&[u8], usize) {
         let size = self.size();
         if self
@@ -326,13 +327,11 @@ impl SettingsPage {
             self.draw();
             self.fresh = true;
         }
-        let pixmap = self
-            .surface
-            .as_mut()
-            .and_then(|s| s.peek_pixels())
-            .expect("raster surfaces expose their pixels");
+        let Some(pixmap) = self.surface.as_mut().and_then(|s| s.peek_pixels()) else {
+            return (&[], 0);
+        };
         let stride = pixmap.row_bytes();
-        (pixmap.bytes().expect("raster pixmaps have bytes"), stride)
+        (pixmap.bytes().unwrap_or_default(), stride)
     }
 
     fn draw(&mut self) {

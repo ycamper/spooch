@@ -27,7 +27,10 @@ enum Row {
     Seconds,
     Login,
     Palette,
-    Account,
+    /// Sign in or make an account.
+    SignedOut,
+    /// Set the password or sign out.
+    SignedIn,
     Sync,
     File,
 }
@@ -117,14 +120,14 @@ impl SettingsForm {
         ];
         rows.push(match facts.sharing {
             Signed::Out => (
-                Row::Account,
+                Row::SignedOut,
                 SettingsItem::Buttons {
                     label: "Not signed in".into(),
                     buttons: vec!["Sign in\u{2026}".into(), "Create account\u{2026}".into()],
                 },
             ),
             Signed::In(name) => (
-                Row::Account,
+                Row::SignedIn,
                 SettingsItem::Buttons {
                     label: name
                         .as_ref()
@@ -172,16 +175,13 @@ impl SettingsForm {
                 with(&|s| s.countdown_seconds = n)
             }
             SettingsEvent::Step(..) => None,
-            SettingsEvent::Button(i, b) if row(i)? == Row::Account => {
-                let signed_in = self.rows.contains(&Row::Sync);
-                Some(SettingsChange::Command(match (signed_in, b) {
-                    (false, 0) => Command::SignIn,
-                    (false, _) => Command::CreateAccount,
-                    (true, 0) => Command::SetPassword,
-                    (true, _) => Command::SignOut,
-                }))
-            }
-            SettingsEvent::Button(..) => None,
+            SettingsEvent::Button(i, b) => Some(SettingsChange::Command(match (row(i)?, b) {
+                (Row::SignedOut, 0) => Command::SignIn,
+                (Row::SignedOut, _) => Command::CreateAccount,
+                (Row::SignedIn, 0) => Command::SetPassword,
+                (Row::SignedIn, _) => Command::SignOut,
+                _ => return None,
+            })),
             SettingsEvent::Shortcut(i, keys) => {
                 let row = row(i)?;
                 let Some((mods, key)) = keys else {
@@ -321,6 +321,20 @@ mod tests {
                 &settings
             ),
             Some(SettingsChange::EditFile)
+        );
+        // Signed in, the same buttons set the password or sign out.
+        let items = form.items(&SettingsFacts {
+            settings: &settings,
+            launch_at_login: false,
+            login_label: "Start when I sign in",
+            sharing: &Signed::In(Some("mark".into())),
+        });
+        assert_eq!(
+            form.change(
+                SettingsEvent::Button(index(&items, "Signed in as mark"), 1),
+                &settings
+            ),
+            Some(SettingsChange::Command(Command::SignOut))
         );
     }
 }
