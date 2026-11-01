@@ -73,18 +73,13 @@ impl Tray {
                             Some(k) => format!("{label}\t{k}"),
                             None => label.clone(),
                         };
-                        let flags = match command {
-                            None => MF_STRING | MF_DISABLED | MF_GRAYED,
-                            Some(_) => MF_STRING,
-                        };
-                        let id = match command {
+                        match command {
                             Some(c) => {
                                 commands.push(c.clone());
-                                commands.len()
+                                (MF_STRING, commands.len(), text)
                             }
-                            None => 0,
-                        };
-                        (flags, id, text)
+                            None => (MF_STRING | MF_DISABLED | MF_GRAYED, 0, text),
+                        }
                     }
                 };
                 let _ = AppendMenuW(m, flags, id, &HSTRING::from(text));

@@ -6,7 +6,7 @@
 
 use crate::settings::{Action, Settings};
 
-/// What a tray menu item does.
+/// What a tray menu item or a settings window control does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     Capture,
