@@ -27,7 +27,7 @@ pub(crate) const FIELD: Color4f = Color4f::new(0.07, 0.075, 0.082, 1.0);
 /// A button at rest.
 pub(crate) const BUTTON: Color4f = Color4f::new(0.165, 0.173, 0.192, 1.0);
 /// What the pointer is over.
-pub(crate) const HOVER: Color4f = Color4f::new(0.18, 0.188, 0.212, 1.0);
+pub(crate) const HOVER: Color4f = Color4f::new(0.235, 0.243, 0.271, 1.0);
 /// What's picked: the current row of a list, a pressed button.
 pub(crate) const SELECTED: Color4f = Color4f::new(0.25, 0.26, 0.29, 1.0);
 /// A pill's outline.

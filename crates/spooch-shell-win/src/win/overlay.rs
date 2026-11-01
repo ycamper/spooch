@@ -101,8 +101,8 @@ struct Overlay {
     surfaces: Vec<Surface>,
     /// The area being picked, and where the pointer is.
     picker: Picker,
-    /// The loupe beside the pointer while selecting, from the core.
-    loupe: Option<Panel>,
+    /// The loupe and the hint while picking, from the core.
+    panels: Vec<Panel>,
     /// Set once the selection is released.
     editor: Option<Session>,
     outcome: Option<Outcome>,
@@ -153,10 +153,13 @@ pub fn show(frames: Vec<(RECT, CapturedFrame)>, sw: &mut Stopwatch) -> windows::
         *o.borrow_mut() = Some(Overlay {
             surfaces,
             picker,
-            loupe: None,
+            panels: Vec::new(),
             editor: None,
             outcome: None,
-        })
+        });
+        if let Some(o) = o.borrow_mut().as_mut() {
+            update_panels(o);
+        }
     });
 
     // Show and paint while cloaked, then uncloak every monitor together so
@@ -352,7 +355,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                         (r.repaint, carry_out(o, r.effects))
                     }
                     None => {
-                        update_loupe(o);
+                        update_panels(o);
                         (true, After::default())
                     }
                 }
@@ -514,7 +517,7 @@ fn start_editing(o: &mut Overlay, area: IRect) {
     });
     match session {
         Some(session) => {
-            o.loupe = None;
+            o.panels.clear();
             edit(o, session);
         }
         None => {
@@ -775,7 +778,7 @@ fn paint(hwnd: HWND) {
             surfaces,
             picker,
             editor,
-            loupe,
+            panels,
             ..
         } = o;
         let selection = match editor.as_ref() {
@@ -783,7 +786,7 @@ fn paint(hwnd: HWND) {
             None => picker.selection().map(rect),
         };
         if let Some(s) = surfaces.get_mut(index) {
-            paint_surface(hdc, s, selection, editor.as_mut(), loupe.as_ref());
+            paint_surface(hdc, s, selection, editor.as_mut(), panels);
         }
     });
     unsafe {
@@ -796,7 +799,7 @@ fn paint_surface(
     s: &mut Surface,
     selection: Option<RECT>,
     mut editor: Option<&mut Session>,
-    loupe: Option<&Panel>,
+    panels: &[Panel],
 ) {
     let (w, h) = (
         s.bounds.right - s.bounds.left,
@@ -805,17 +808,11 @@ fn paint_surface(
     let local = selection.and_then(|sel| {
         intersect(&sel, &s.bounds).map(|r| (sel, offset(&r, -s.bounds.left, -s.bounds.top)))
     });
-    let loupe = loupe.filter(|l| {
-        let r = &l.rect;
-        let r = RECT {
-            left: r.left,
-            top: r.top,
-            right: r.right,
-            bottom: r.bottom,
-        };
-        intersect(&r, &s.bounds).is_some()
-    });
-    if local.is_none() && loupe.is_none() {
+    let panels: Vec<&Panel> = panels
+        .iter()
+        .filter(|p| intersect(&rect(p.rect), &s.bounds).is_some())
+        .collect();
+    if local.is_none() && panels.is_empty() {
         // Nothing on this monitor: the dimmed frame goes straight to the
         // window. This is the first paint, so keep it to one copy.
         blit_whole(hdc, &s.dim, &s.image, w);
@@ -832,9 +829,9 @@ fn paint_surface(
         let back = back.dc;
         blit_whole(back, &s.dim, &s.image, w);
         let Some((sel, local)) = local else {
-            // Only the loupe is here.
-            if let Some(l) = loupe {
-                blend_panel(back, l, &s.bounds);
+            // Only the loupe or hint is here.
+            for p in &panels {
+                blend_panel(back, p, &s.bounds);
             }
             let _ = BitBlt(hdc, 0, 0, w, h, Some(back), 0, 0, SRCCOPY);
             return;
@@ -876,11 +873,11 @@ fn paint_surface(
             FillRect(back, &rect(r), brush);
             let _ = DeleteObject(brush.into());
         }
-        if editor.is_none()
-            && let Some(l) = loupe
-        {
+        if editor.is_none() {
             // While selecting, the core's loupe shows the size.
-            blend_panel(back, l, &s.bounds);
+            for p in &panels {
+                blend_panel(back, p, &s.bounds);
+            }
         }
 
         // The editor's chrome (rail, style row, output bar), drawn by the
@@ -923,12 +920,12 @@ fn to_virtual(hwnd: HWND, lparam: LPARAM) -> POINT {
 }
 
 /// The loupe for where the pointer is now, drawn by the core from the
-/// frozen pixels round it (stitched across monitors, black between them).
-fn update_loupe(o: &mut Overlay) {
-    let loupe = o
+/// frozen pixels round it (stitched across monitors, black between them),
+/// and the hint.
+fn update_panels(o: &mut Overlay) {
+    o.panels = o
         .picker
-        .loupe(|r| stitch(&o.surfaces, rect(r)).map(|img| img.data));
-    o.loupe = loupe;
+        .panels(|r| stitch(&o.surfaces, rect(r)).map(|img| img.data));
 }
 
 fn rect(r: IRect) -> RECT {

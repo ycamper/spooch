@@ -48,8 +48,9 @@ Linux targets; cross-compiling to `windows-gnu` isn't supported.
   steps, **0** redact; type for a label. Click a mark to select, move or
   reshape it; drag the capture's edges to crop or extend it.
 - **Enter** or **Ctrl+C** copies, **Ctrl+S** also saves to
-  `Pictures\Spooch` (`$XDG_PICTURES_DIR/Spooch`), **Ctrl+drag** drops it into
-  another app as a file. **Esc** or right-click cancels.
+  `Pictures\Spooch` (`$XDG_PICTURES_DIR/Spooch`), and **Ctrl+drag**, or
+  dragging the file name, drops it into another app as a file. **Esc** or
+  right-click cancels.
 - **Ctrl+E** moves the capture into the editor window, with zoom and a
   gallery of Recents (**Ctrl+H** hides it).
 - Every capture is kept in Recents for 30 days or 2 GB. **Ctrl+Alt+Shift+2**

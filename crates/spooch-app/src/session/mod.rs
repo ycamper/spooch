@@ -334,7 +334,7 @@ impl Session {
             repaint: true,
             ..Response::default()
         };
-        // Ctrl+drag on the image drags it out.
+        // Ctrl+drag on the image drags it out, as does a drag from its name.
         if mods.ctrl && self.doc.on_canvas(p) && !self.doc.on_chrome(p) {
             self.drag_out_from = Some(p);
             r.effects.push(Effect::CaptureMouse);
@@ -365,6 +365,11 @@ impl Session {
             }
             Some(Action::Settings) => {
                 r.effects.push(Effect::OpenSettings);
+                return r;
+            }
+            Some(Action::DragOut) => {
+                self.drag_out_from = Some(p);
+                r.effects.push(Effect::CaptureMouse);
                 return r;
             }
             Some(Action::Gallery(a)) => {

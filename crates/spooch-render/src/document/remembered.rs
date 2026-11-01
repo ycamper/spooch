@@ -30,6 +30,9 @@ struct Remembered {
     /// "Use for every capture".
     pinned: Option<FramingFile>,
     gallery: Option<bool>,
+    /// Whether the style row shows opacity and the edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    extras: Option<bool>,
     /// Names, newest first.
     stickers: Vec<String>,
     /// "png" or "jpg".
@@ -116,6 +119,7 @@ impl Styles {
             framing: self.framing.into(),
             pinned: self.pinned.map(FramingFile::from),
             gallery: Some(self.gallery),
+            extras: Some(self.extras),
             stickers: self
                 .stickers
                 .iter()
@@ -153,6 +157,9 @@ impl Styles {
             self.framing = f;
         }
         self.pinned = file.pinned.as_ref().and_then(FramingFile::framing);
+        if let Some(e) = file.extras {
+            self.extras = e;
+        }
         if let Some(g) = file.gallery {
             self.gallery = g;
         }

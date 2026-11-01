@@ -119,14 +119,29 @@ fn the_look_button_puts_labels_on_plates() {
 fn saved_looks_keep_and_bring_back_a_style() {
     let mut d = doc();
     d.set_tool(Tool::Box);
-    let chip = |d: &Document, i: usize| Rect::from(d.row_layout().unwrap().quick[i]).center();
+    let slots = |d: &Document| -> Vec<usize> {
+        d.row_layout()
+            .unwrap()
+            .quick
+            .iter()
+            .map(|(i, _)| *i)
+            .collect()
+    };
+    let chip = |d: &Document, i: usize| {
+        let row = d.row_layout().unwrap();
+        let (_, r) = row.quick.iter().find(|(slot, _)| *slot == i).unwrap();
+        Rect::from(*r).center()
+    };
     let saved = |d: &Document| d.styles().quick[style::tool_index(Tool::Box)][0];
-    // An empty chip keeps the look in use.
+    // Only an empty "+" chip at first; it keeps the look in use, and the
+    // next empty one shows.
+    assert_eq!(slots(&d), vec![0]);
     d.set_colour(3);
     d.step_size(true);
     let kept = d.tool_style();
     d.begin_drag(chip(&d, 0));
     assert_eq!(saved(&d), Some(kept));
+    assert_eq!(slots(&d), vec![0, 1]);
     // Later, the chip brings it back.
     d.set_colour(0);
     d.step_size(false);
@@ -1219,4 +1234,24 @@ fn escape_on_a_blank_label_repaints_to_drop_the_caret() {
     assert!(matches!(out, KeyOutcome::Handled { changed: true }));
     assert!(!d.is_typing());
     assert_eq!(d.counts().labels, 0);
+}
+
+#[test]
+fn opacity_and_the_edge_sit_behind_more() {
+    let mut d = with_room_for_chrome(doc());
+    d.set_tool(Tool::Box);
+    let row = d.row_layout().unwrap();
+    assert!(row.opacity.is_none() && row.edge.is_none() && row.outline.is_none());
+    let more = row.extras.unwrap();
+    let size = row.size.unwrap();
+    d.begin_drag(Rect::from(more).center());
+    d.end_drag();
+    let row = d.row_layout().unwrap();
+    assert!(row.opacity.is_some() && row.edge.is_some() && row.outline.is_some());
+    // Opening them moves nothing else.
+    assert_eq!((row.extras, row.size), (Some(more), Some(size)));
+    assert!(row.opacity.unwrap().left > more.right);
+    // Highlights have no edge, so no "…".
+    d.set_tool(Tool::Highlight);
+    assert!(d.row_layout().unwrap().extras.is_none());
 }

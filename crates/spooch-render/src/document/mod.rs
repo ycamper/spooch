@@ -40,7 +40,7 @@ pub use keys::{Key, KeyOutcome, Mods, SHARE_SHORTCUT};
 pub use saved::LoadError;
 pub use settings_page::{SettingsEvent, SettingsItem, SettingsPage};
 pub use style::{PALETTE, PALETTES, Palette, Style, Styles};
-pub(crate) use theme::{SELECTION, fill, hex, ink_baseline, stroke, with_alpha};
+pub(crate) use theme::{SELECTION, centred_baseline, fill, hex, ink_baseline, stroke, with_alpha};
 pub use view::{WindowButton, WindowPart};
 
 use grips::{

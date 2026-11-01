@@ -240,3 +240,36 @@ pub fn set_gnome_screenshot_binding(value: &str) -> Result<(), String> {
         .then_some(())
         .ok_or_else(|| format!("gsettings exited with {status}"))
 }
+
+/// The scale `Xft.dpi` in X resources `text` asks for, from 1 to 4.
+pub fn xft_scale(text: &[u8]) -> f32 {
+    String::from_utf8_lossy(text)
+        .lines()
+        .find_map(|l| l.strip_prefix("Xft.dpi:"))
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .filter(|dpi| dpi.is_finite())
+        .map_or(1.0, |dpi| (dpi / 96.0).clamp(1.0, 4.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xft_scale;
+
+    #[test]
+    fn xft_dpi_sets_the_scale() {
+        assert_eq!(
+            xft_scale(
+                b"Xft.antialias:	1
+Xft.dpi:	192
+"
+            ),
+            2.0
+        );
+        assert_eq!(xft_scale(b"Xft.dpi: 144"), 1.5);
+        assert_eq!(xft_scale(b""), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:	lots"), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:	72"), 1.0);
+        assert_eq!(xft_scale(b"Xft.dpi:	9999"), 4.0);
+        assert_eq!(xft_scale(b"Xft.dpi:	NaN"), 1.0);
+    }
+}

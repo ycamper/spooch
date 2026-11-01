@@ -37,8 +37,8 @@ const GROUP_ENDS: [Tool; 2] = [Tool::Pixelate, Tool::Pen];
 /// Style row sizes.
 const ROW_H: f32 = 32.0;
 const ROW_PAD: f32 = 8.0;
-const SWATCH: f32 = 18.0;
-const SWATCH_GAP: f32 = 6.0;
+const SWATCH: f32 = 20.0;
+const SWATCH_GAP: f32 = 4.0;
 const SIZE_BUTTON: f32 = 22.0;
 /// Space taken by the line between the colours and the rest.
 const SEPARATOR_GAP: f32 = 13.0;
@@ -111,8 +111,10 @@ pub(super) enum Hit {
     Palette,
     /// The look button: highlight looks, or label plates.
     Look,
-    /// A saved look at the end of the row.
+    /// A saved look near the end of the row, by its slot.
     Quick(usize),
+    /// The "…" button that shows or hides opacity and the edge.
+    Extras,
     Slider(Slider),
     Edge,
     /// The label font button.
@@ -162,8 +164,10 @@ pub(super) struct RowLayout {
     pub font: Option<IRect>,
     /// The recently picked stickers, and the button for all of them.
     pub stickers: Vec<IRect>,
-    /// The saved looks, last on the row.
-    pub quick: Vec<IRect>,
+    /// The saved looks by slot: the filled ones and the first empty one.
+    pub quick: Vec<(usize, IRect)>,
+    /// The "…" button, after which opacity and the edge show when open.
+    pub extras: Option<IRect>,
     pub more: Option<IRect>,
     /// Whether the size slider is strength.
     pub strength: bool,
@@ -184,12 +188,7 @@ impl RowLayout {
                     .enumerate()
                     .map(|(i, r)| (Hit::Sticker(i), *r)),
             )
-            .chain(
-                self.quick
-                    .iter()
-                    .enumerate()
-                    .map(|(i, r)| (Hit::Quick(i), *r)),
-            )
+            .chain(self.quick.iter().map(|(i, r)| (Hit::Quick(*i), *r)))
             .collect();
         let optional = [
             (Hit::Palette, self.palette),
@@ -200,6 +199,7 @@ impl RowLayout {
             (Hit::Slider(Slider::Outline), self.outline),
             (Hit::Font, self.font),
             (Hit::StickerMore, self.more),
+            (Hit::Extras, self.extras),
         ];
         out.extend(optional.into_iter().filter_map(|(h, r)| Some((h, r?))));
         out
@@ -347,18 +347,24 @@ impl Document {
             rest.push(slider_w);
         }
         let has_font = has_looks && self.shows_font();
-        if has_looks {
-            rest.push(slider_w);
-            rest.push(SIZE_BUTTON);
-            rest.push(slider_w);
-        }
         if has_font {
             rest.push(FONT_BUTTON);
         }
-        let has_quick = self.quick_tool().is_some();
-        let n = super::style::QUICK_STYLES as f32;
-        if has_quick {
+        let slots = self.shown_quick_slots();
+        if !slots.is_empty() {
+            let n = slots.len() as f32;
             rest.push(n * SIZE_BUTTON + (n - 1.0) * QUICK_GAP);
+        }
+        // Opacity and the edge are used less: behind "…", opening after it
+        // so nothing else moves.
+        let extras_open = has_looks && self.styles.extras;
+        if has_looks {
+            rest.push(SIZE_BUTTON);
+        }
+        if extras_open {
+            rest.push(slider_w);
+            rest.push(SIZE_BUTTON);
+            rest.push(slider_w);
         }
         let stickers_w = if has_stickers {
             let n = super::style::RECENT_STICKERS as f32;
@@ -455,25 +461,31 @@ impl Document {
             r
         });
         let size = has_size.then(|| track(&mut left));
-        let opacity = has_looks.then(|| track(&mut left));
-        let edge = has_looks.then(|| {
-            let r = square(left, SIZE_BUTTON);
-            left += (SIZE_BUTTON + GROUP_GAP) * s;
-            r
-        });
-        let outline = has_looks.then(|| track(&mut left));
         let font = has_font.then(|| {
             let r = square(left, FONT_BUTTON);
             left += (FONT_BUTTON + GROUP_GAP) * s;
             r
         });
         let mut quick = Vec::new();
-        if has_quick {
-            for _ in 0..super::style::QUICK_STYLES {
-                quick.push(square(left, SIZE_BUTTON));
-                left += (SIZE_BUTTON + QUICK_GAP) * s;
-            }
+        for i in slots {
+            quick.push((i, square(left, SIZE_BUTTON)));
+            left += (SIZE_BUTTON + QUICK_GAP) * s;
         }
+        if !quick.is_empty() {
+            left += (GROUP_GAP - QUICK_GAP) * s;
+        }
+        let extras = has_looks.then(|| {
+            let r = square(left, SIZE_BUTTON);
+            left += (SIZE_BUTTON + GROUP_GAP) * s;
+            r
+        });
+        let opacity = extras_open.then(|| track(&mut left));
+        let edge = extras_open.then(|| {
+            let r = square(left, SIZE_BUTTON);
+            left += (SIZE_BUTTON + GROUP_GAP) * s;
+            r
+        });
+        let outline = extras_open.then(|| track(&mut left));
         Some(RowLayout {
             rect,
             colours,
@@ -487,6 +499,7 @@ impl Document {
             stickers,
             more,
             quick,
+            extras,
             strength: row == Row::Strength,
         })
     }
@@ -807,6 +820,10 @@ impl Document {
             }
             Some(Hit::Palette) => {
                 self.cycle_palette();
+            }
+            Some(Hit::Extras) => {
+                self.styles.extras = !self.styles.extras;
+                self.chrome_key = None;
             }
             Some(Hit::Quick(i)) => {
                 self.press_quick(i);

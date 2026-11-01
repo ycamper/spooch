@@ -85,6 +85,7 @@ fn the_current_tool_is_red_and_corners_are_clear() {
 #[test]
 fn the_style_row_sits_above_and_picks_colours_and_sizes() {
     let (mut d, _) = placed();
+    d.styles.extras = true;
     let row = d.row_layout().expect("arrows have a style");
     assert!(row.rect.bottom <= 100 - 8, "{:?}", row.rect);
     assert_eq!(row.colours.len(), 8);
@@ -136,6 +137,7 @@ fn the_style_row_sits_above_and_picks_colours_and_sizes() {
 #[test]
 fn dragging_a_slider_restyles_the_mark_as_one_undo_step() {
     let (mut d, _) = placed();
+    d.styles.extras = true;
     assert!(super::super::tests::drag(
         &mut d,
         (120.0, 150.0),
