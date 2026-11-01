@@ -528,6 +528,10 @@ fn only_a_capture_that_was_used_is_kept() {
     );
     assert!(keep(&mut copied).starts_with("kept in recents"));
     assert_eq!(recents.list(), vec![copied.id().to_string()]);
+    // Marked, then cancelled: kept, so the work isn't lost.
+    let (mut marked, _) = session(Some(recents.clone()), 4);
+    arrow(&mut marked);
+    assert!(keep(&mut marked).starts_with("kept in recents"));
     // Taken to the editor window: kept.
     let (s, _) = session(Some(recents.clone()), 3);
     let mut window = s.into_window();
@@ -542,4 +546,22 @@ fn only_a_capture_that_was_used_is_kept() {
     .unwrap();
     assert!(keep(&mut reopened).starts_with("kept in recents"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Draw an arrow across the selection.
+fn arrow(s: &mut Session) {
+    s.press(pt(120.0, 120.0), NONE);
+    s.motion(pt(180.0, 160.0), (4.0, 4.0), NONE);
+    s.release(pt(180.0, 160.0));
+    assert_eq!(s.doc.counts().arrows, 1);
+}
+
+#[test]
+fn a_right_click_cancels_only_before_the_first_mark() {
+    let (mut s, _) = session(None, 0);
+    assert_eq!(s.right_click().effects, vec![Effect::Cancel]);
+    arrow(&mut s);
+    assert!(s.right_click().effects.is_empty());
+    // Esc still cancels.
+    assert_eq!(s.key(Key::Escape, NONE).effects, vec![Effect::Cancel]);
 }
