@@ -170,7 +170,19 @@ pub(crate) fn clicked_size(name: &str, side: f32) -> (f32, f32) {
     sticker_size(name, side * k)
 }
 
+/// The sticker grid's tabs, by `Art::tab`.
+pub(crate) const STICKER_TABS: [&str; 3] = ["Emoji", "Stamps", "Pointers"];
+
 impl Art {
+    /// Its tab in the sticker grid, into `STICKER_TABS`.
+    pub(crate) fn tab(self) -> usize {
+        match self {
+            Art::Emoji(_) => 0,
+            Art::Stamp(..) => 1,
+            Art::Pointer(_) => 2,
+        }
+    }
+
     /// How many grid cells it takes across.
     pub(crate) fn cells(self) -> usize {
         match self {

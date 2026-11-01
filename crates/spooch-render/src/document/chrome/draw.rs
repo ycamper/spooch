@@ -140,8 +140,8 @@ impl Document {
             if let Some(k) = &picker {
                 panels.extend(self.draw_picker(k));
             }
-            if let Some((grid, cells)) = self.sticker_grid() {
-                panels.push(self.draw_sticker_grid(grid, &cells));
+            if let Some(g) = self.sticker_grid() {
+                panels.push(self.draw_sticker_grid(&g));
             }
             let sliding = match &self.gesture {
                 Some(Gesture::Slide { slider, .. }) => Some(Hit::Slider(*slider)),
@@ -255,7 +255,7 @@ impl Document {
             }
             if let Some(b) = &layout.more {
                 let rect = local(b);
-                if self.sticker_menu || self.hovered == Some(Hit::StickerMore) {
+                if self.sticker_menu.is_some() || self.hovered == Some(Hit::StickerMore) {
                     let p = fill(HOVER);
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 6.0 * s, 6.0 * s), &p);
                 }
@@ -467,22 +467,34 @@ impl Document {
         })
     }
 
-    /// The grid of every sticker; the one the tool stamps is marked.
-    fn draw_sticker_grid(&self, grid: IRect, cells: &[IRect]) -> Panel {
+    /// The grid of every sticker: its tabs, the open one marked, and the
+    /// open tab's stickers, the one the tool stamps marked.
+    fn draw_sticker_grid(&self, g: &StickerGrid) -> Panel {
         let s = self.scale;
         let current = self.sticker();
-        let hovered = match self.hovered {
-            Some(Hit::StickerOption(i)) => Some(i),
-            _ => None,
-        };
-        panel(grid, |canvas| {
-            let bounds = Rect::from_wh(grid.width() as f32, grid.height() as f32);
+        let font = self.bar_font();
+        panel(g.rect, |canvas| {
+            let bounds = Rect::from_wh(g.rect.width() as f32, g.rect.height() as f32);
             rounded_panel(canvas, bounds, 10.0 * s, s);
-            let origin = Point::new(grid.left as f32, grid.top as f32);
-            for (i, cell) in cells.iter().enumerate() {
-                let rect = Rect::from(*cell).with_offset(-origin);
+            let origin = Point::new(g.rect.left as f32, g.rect.top as f32);
+            for (t, tab) in g.tabs.iter().enumerate() {
+                let rect = Rect::from(*tab).with_offset(-origin);
+                if self.sticker_menu == Some(t) {
+                    fill_rrect(canvas, rect, 7.0 * s, ACTIVE);
+                } else if self.hovered == Some(Hit::StickerTab(t)) {
+                    fill_rrect(canvas, rect, 7.0 * s, HOVER);
+                }
+                if let Some(f) = &font {
+                    let label = STICKER_TABS[t];
+                    let x = rect.center_x() - f.measure_str(label, None).0 / 2.0;
+                    let y = centred_baseline(f, rect.center_y());
+                    canvas.draw_str(label, (x, y), f, &fill(TEXT));
+                }
+            }
+            for &(i, cell) in &g.cells {
+                let rect = Rect::from(cell).with_offset(-origin);
                 let (name, _) = crate::STICKERS[i];
-                if name == current || hovered == Some(i) {
+                if name == current || self.hovered == Some(Hit::StickerOption(i)) {
                     let p = fill(if name == current { ACTIVE } else { HOVER });
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 7.0 * s, 7.0 * s), &p);
                 }
@@ -667,7 +679,9 @@ impl Document {
             }
             Hit::MoveTab => "Drag to move the selection, Shift+drag to bring the marks".to_string(),
             // The dropdown names its fonts itself.
-            Hit::FontPicker | Hit::FontOption(_) | Hit::MenuOption(_) => return None,
+            Hit::FontPicker | Hit::FontOption(_) | Hit::MenuOption(_) | Hit::StickerTab(_) => {
+                return None;
+            }
             Hit::Bar(BarItem::Save) if self.save_shows() => {
                 "Show the saved picture in its folder".to_string()
             }
@@ -690,7 +704,9 @@ impl Document {
                     h,
                 )
             }
-            Hit::FontPicker | Hit::FontOption(_) | Hit::MenuOption(_) => return None,
+            Hit::FontPicker | Hit::FontOption(_) | Hit::MenuOption(_) | Hit::StickerTab(_) => {
+                return None;
+            }
             // Under the top row, kept in the window.
             Hit::Top(item) => {
                 let t = self.top_layout()?;
@@ -740,11 +756,10 @@ impl Document {
                     h,
                 )
             }
-            // Above the row, over the button.
             // Over the grid, above the sticker.
             Hit::StickerOption(i) => {
-                let (_, cells) = self.sticker_grid()?;
-                let b = cells.get(i)?;
+                let g = self.sticker_grid()?;
+                let (_, b) = g.cells.iter().find(|(j, _)| *j == i)?;
                 IRect::from_xywh(
                     (b.left + b.right) / 2 - w / 2,
                     b.top - h - (2.0 * s) as i32,

@@ -1152,6 +1152,31 @@ fn stickers_stamp_size_swap_and_keep() {
 }
 
 #[test]
+fn the_sticker_grid_has_a_tab_per_kind() {
+    let (w, h) = (600u32, 400u32);
+    let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
+    let mut d =
+        with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
+    d.set_tool(Tool::Sticker);
+    d.sticker_menu = Some(1);
+    let g = d.sticker_grid().unwrap();
+    assert_eq!(g.tabs.len(), 3);
+    assert_eq!(g.cells.len(), 8);
+    assert!(
+        g.cells
+            .iter()
+            .all(|(i, _)| matches!(crate::STICKERS[*i].1, crate::Art::Stamp(..)))
+    );
+    // A click on a tab shows it, and the grid keeps its size.
+    let (tall, tab) = (g.rect.height(), g.tabs[2]);
+    let mid = |a: i32, b: i32| (a + b) as f32 / 2.0;
+    click(&mut d, mid(tab.left, tab.right), mid(tab.top, tab.bottom));
+    assert_eq!(d.sticker_menu, Some(2));
+    let g = d.sticker_grid().unwrap();
+    assert_eq!((g.cells.len(), g.rect.height()), (4, tall));
+}
+
+#[test]
 fn stamps_are_wide_and_lean_and_swaps_keep_the_area() {
     let (w, h) = (600u32, 400u32);
     let data = [255u8, 255, 255, 255].repeat((w * h) as usize);

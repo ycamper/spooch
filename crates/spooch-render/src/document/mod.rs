@@ -422,8 +422,8 @@ pub struct Document {
     wheel_rest: f32,
     /// Whether the font dropdown under a label is open.
     font_menu: bool,
-    /// Whether the grid of every sticker is open under the style row.
-    sticker_menu: bool,
+    /// The tab the grid of every sticker is open on, under the style row.
+    sticker_menu: Option<usize>,
     /// Whether Alt is held, showing the framed result instead of the
     /// editor's chrome.
     preview: bool,
@@ -521,7 +521,7 @@ impl Document {
             space: false,
             wheel_rest: 0.0,
             font_menu: false,
-            sticker_menu: false,
+            sticker_menu: None,
             preview: false,
             frame_title: frame::last_title(),
             editing_title: false,

@@ -64,7 +64,9 @@ fn main() {
         click(&mut d, x, y);
     }
 
-    // Open the grid: its button is after the ten recent stickers.
+    // Open the grid, on the Stamps tab since a stamp is picked: its button
+    // is after the ten recent stickers.
+    pick(&mut d, "stamp_ship_it");
     let row = d.chrome().to_vec()[1].rect;
     click(
         &mut d,
