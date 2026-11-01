@@ -6,6 +6,7 @@
 //! Repaints compose into a back pixmap and copy only the damaged area, so
 //! dragging does not flicker and does not push the desktop over the socket.
 
+mod badge;
 mod capture;
 mod clipboard;
 mod countdown;
@@ -22,7 +23,7 @@ mod window;
 mod xdnd;
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use spooch_app::{
     Args, Carry, Config, DRAG_SLOP, Deliverable, Effect as EditEffect, Loaded, Pick, Picker,
@@ -196,6 +197,10 @@ struct App {
     countdown: Option<countdown::Countdown>,
     /// Counts countdowns, so a tick from one called off is ignored.
     countdowns: u32,
+    /// The toast after a copy, while it's up.
+    toast: Option<badge::Badge>,
+    /// Counts toasts, so the end of one replaced is ignored.
+    toasts: u32,
     /// What shortcuts, menu picks and countdown ticks do, shared with the
     /// other platforms.
     flow: Flow,
@@ -367,6 +372,8 @@ pub fn run() -> Result<(), String> {
         wake,
         countdown: None,
         countdowns: 0,
+        toast: None,
+        toasts: 0,
         flow: Flow::default(),
         quit: false,
         conn,
@@ -437,6 +444,9 @@ pub fn run() -> Result<(), String> {
 /// folder changed (0 is the welcome's answers, 1 a countdown tick, 2 the
 /// gallery's thumbnails).
 const SETTINGS_CHANGED: u32 = 3;
+/// The wake message's first word when a toast's time is up; the second is
+/// which toast.
+const TOAST_DONE: u32 = 4;
 
 /// The atom for `name`, interning it if need be.
 fn atom(conn: &RustConnection, name: &[u8]) -> Result<Atom, String> {
@@ -613,7 +623,7 @@ impl App {
                         log::line(format!("took Print Screen from GNOME (was {old})"));
                         // GNOME lets go of the key asynchronously.
                         for _ in 0..10 {
-                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            std::thread::sleep(Duration::from_millis(100));
                             taken = self.grab_shortcuts();
                             if !taken.contains(&print) {
                                 break;
@@ -749,10 +759,49 @@ impl App {
         }
     }
 
+    /// What the badges draw with.
+    fn screen(&self) -> badge::Screen<'_> {
+        badge::Screen {
+            conn: &self.conn,
+            root: self.root,
+            depth: self.depth,
+            gc: self.gc,
+        }
+    }
+
+    /// Say `text` in a toast centred on `over` for a moment, replacing any
+    /// toast already up.
+    fn show_toast(&mut self, text: &str, over: IRect) {
+        self.hide_toast();
+        let ((w, h), pixels) = spooch_render::toast(text, 1.0, Some(badge::behind()));
+        let r = spooch_app::centred(over, w, h);
+        let size = (w as u16, h as u16);
+        match badge::Badge::show(self.screen(), (r.left, r.top), size, &pixels) {
+            Ok(b) => self.toast = Some(b),
+            Err(e) => {
+                log::line(format!("could not show the toast: {e}"));
+                return;
+            }
+        }
+        self.toasts = self.toasts.wrapping_add(1);
+        let (window, atom, which) = (self.clipboard.owner, self.wake, self.toasts);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(u64::from(spooch_render::TOAST_MS)));
+            wake_with(window, atom, [TOAST_DONE, which, 0, 0, 0]);
+        });
+    }
+
+    fn hide_toast(&mut self) {
+        if let Some(b) = self.toast.take() {
+            b.close(&self.conn);
+        }
+    }
+
     /// Show `n` on the countdown badge, putting it up if it isn't yet.
     fn show_countdown(&mut self, n: u32) {
-        if let Some(c) = &mut self.countdown {
-            c.set(&self.conn, self.gc, self.depth, n);
+        if let Some(mut c) = self.countdown.take() {
+            c.set(self.screen(), n);
+            self.countdown = Some(c);
             return;
         }
         let at = self.pointer();
@@ -763,10 +812,7 @@ impl App {
         self.countdowns = self.countdowns.wrapping_add(1);
         let (window, atom) = (self.clipboard.owner, self.wake);
         match countdown::Countdown::start(
-            &self.conn,
-            self.root,
-            self.depth,
-            self.gc,
+            self.screen(),
             at,
             n,
             self.countdowns,
@@ -979,6 +1025,10 @@ impl App {
             let d = e.data.as_data32();
             if d[0] == countdown::TICK {
                 self.countdown_tick(d[1]);
+            } else if d[0] == TOAST_DONE {
+                if d[1] == self.toasts {
+                    self.hide_toast();
+                }
             } else if d[0] == window::NEWS {
                 self.news_ready();
             } else if d[0] == SETTINGS_CHANGED {

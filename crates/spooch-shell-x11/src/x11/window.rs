@@ -3,7 +3,7 @@
 //! drags go to the window manager (`_NET_WM_MOVERESIZE`).
 
 use spooch_app::{Effect as EditEffect, Response, Session as EditSession};
-use spooch_render::skia_safe::Point as DocPoint;
+use spooch_render::skia_safe::{IRect, Point as DocPoint};
 use spooch_render::{Mods, WindowButton, WindowPart};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -426,8 +426,25 @@ impl App {
         let Some(ew) = &mut self.editor_window else {
             return;
         };
+        let (window, (w, h)) = (ew.window, ew.size);
         match ew.session.deliverable(save) {
-            Ok(d) => self.deliver(d, time, &mut |line| log::line(&line)),
+            Ok(d) => {
+                let said = self.deliver(d, time, &mut |line| log::line(&line));
+                let at = self
+                    .conn
+                    .translate_coordinates(window, self.root, 0, 0)
+                    .ok()
+                    .and_then(|c| c.reply().ok());
+                if let Some(at) = at {
+                    let over = IRect::from_xywh(
+                        i32::from(at.dst_x),
+                        i32::from(at.dst_y),
+                        i32::from(w),
+                        i32::from(h),
+                    );
+                    self.show_toast(said, over);
+                }
+            }
             Err(e) => log::line(format!("copy failed: {e}")),
         }
     }

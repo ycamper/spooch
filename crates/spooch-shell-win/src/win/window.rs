@@ -25,12 +25,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
-    GetCursorPos, GetSystemMetrics, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible, LoadCursorW,
-    MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE, SW_SHOWNORMAL,
-    SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_APP, WM_CHAR,
-    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    GetCursorPos, GetSystemMetrics, GetWindowRect, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible,
+    LoadCursorW, MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE,
+    SW_SHOWNORMAL, SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+    WM_APP, WM_CHAR, WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT,
+    WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON,
@@ -559,8 +559,12 @@ fn carry_out(hwnd: HWND, response: Option<Response>) {
                 let mut sw = Stopwatch::start();
                 match with_window(|e| e.session.deliverable(save)) {
                     Some(Ok(d)) => {
-                        deliver(hwnd, d, &mut sw);
+                        let said = deliver(hwnd, d, &mut sw);
                         sw.report("editor copy");
+                        let mut over = RECT::default();
+                        if unsafe { GetWindowRect(hwnd, &mut over) }.is_ok() {
+                            super::badge::toast(said, over);
+                        }
                     }
                     Some(Err(e)) => log::line(format!("copy failed: {e}")),
                     None => {}

@@ -31,9 +31,9 @@ const GAP: f32 = 2.0;
 const SEPARATOR: f32 = 7.0;
 /// Space between chrome and the canvas.
 const MARGIN: f32 = 8.0;
-/// Separators after these tools: shapes and effects, then lines and pen,
-/// then steps and redact.
-const GROUP_ENDS: [Tool; 2] = [Tool::Pixelate, Tool::Pen];
+/// Separators after these tools: shapes and effects, lines and pen, steps
+/// and redact, then the tools without a key.
+const GROUP_ENDS: [Tool; 3] = [Tool::Pixelate, Tool::Pen, Tool::Redact];
 /// Style row sizes.
 const ROW_H: f32 = 32.0;
 const ROW_PAD: f32 = 8.0;

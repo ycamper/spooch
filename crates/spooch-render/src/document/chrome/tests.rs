@@ -34,7 +34,7 @@ fn the_rail_docks_left_then_right_then_inside() {
 fn clicking_a_button_picks_the_tool_without_drawing() {
     let (mut d, _) = placed();
     let layout = d.rail_layout();
-    let (tool, b) = layout.buttons[2];
+    let (tool, b) = layout.buttons[1];
     assert_eq!(tool, Tool::Box);
     let p = Rect::from(b).center();
     assert_eq!(d.cursor_at(p), Cursor::Arrow);

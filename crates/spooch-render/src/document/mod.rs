@@ -196,10 +196,10 @@ pub enum Tool {
 }
 
 impl Tool {
-    /// Every tool, in rail order.
+    /// Every tool, in rail order: the keyed ones in key order, so the
+    /// rail teaches the keys, then the two without a key.
     pub const ALL: [Tool; 12] = [
         Tool::Arrow,
-        Tool::Text,
         Tool::Box,
         Tool::Highlight,
         Tool::Blur,
@@ -208,8 +208,9 @@ impl Tool {
         Tool::Ellipse,
         Tool::Pen,
         Tool::Steps,
-        Tool::Sticker,
         Tool::Redact,
+        Tool::Text,
+        Tool::Sticker,
     ];
 
     /// The tools on digit keys 1 to 9, then 0. Text has none: typing
