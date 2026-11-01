@@ -24,6 +24,7 @@ mod pointer;
 mod remembered;
 mod render;
 mod saved;
+mod settings_page;
 mod style;
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,7 @@ pub use frame::{Exported, FRAME_COLOURS, Frame, SHADOWS, load_frames};
 pub use gallery::{Gallery, GalleryAction, SyncBadge, thumbnail};
 pub use keys::{Key, KeyOutcome, Mods, SHARE_SHORTCUT};
 pub use saved::LoadError;
+pub use settings_page::{SettingsEvent, SettingsItem, SettingsPage};
 pub use style::{PALETTE, PALETTES, Palette, Style, Styles};
 pub(crate) use theme::{SELECTION, fill, hex, ink_baseline, stroke, with_alpha};
 pub use view::{WindowButton, WindowPart};

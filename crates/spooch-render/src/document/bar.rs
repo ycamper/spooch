@@ -69,6 +69,8 @@ pub enum Action {
     Window(super::view::WindowButton),
     /// A press on the editor window's gallery.
     Gallery(super::GalleryAction),
+    /// Open the settings window.
+    Settings,
 }
 
 const BAR_H: f32 = 32.0;

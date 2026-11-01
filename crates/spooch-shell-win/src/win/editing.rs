@@ -17,7 +17,8 @@ use windows::Win32::System::Com::IDataObject;
 use windows::Win32::System::Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, MAPVK_VK_TO_CHAR, MapVirtualKeyW, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
-    VK_ESCAPE, VK_HOME, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_UP,
+    VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT,
+    VK_SHIFT, VK_SNAPSHOT, VK_UP,
 };
 use windows::Win32::UI::Shell::{
     BHID_DataObject, IShellItem, SHCreateItemFromParsingName, SHDoDragDrop,
@@ -83,6 +84,8 @@ pub(super) fn editor_key(vk: u16) -> Option<Key> {
         k if k == VK_END.0 => Key::End,
         k if k == VK_PRIOR.0 => Key::PageUp,
         k if k == VK_NEXT.0 => Key::PageDown,
+        k if (VK_F1.0..=VK_F24.0).contains(&k) => Key::F((k - VK_F1.0 + 1) as u8),
+        k if k == VK_SNAPSHOT.0 => Key::PrintScreen,
         _ => {
             // The top bit marks a dead key.
             let c = unsafe { MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_CHAR) } & 0x7fff_ffff;

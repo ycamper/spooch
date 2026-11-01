@@ -120,6 +120,8 @@ pub(super) fn editor_key(keymap: &Keymap, sym: u32, detail: u8) -> Option<Editor
         XK_END | XK_KP_END => Some(EditorKey::End),
         XK_PRIOR | XK_KP_PRIOR => Some(EditorKey::PageUp),
         XK_NEXT | XK_KP_NEXT => Some(EditorKey::PageDown),
+        XK_PRINT => Some(EditorKey::PrintScreen),
+        0xffbe..=0xffd5 => Some(EditorKey::F((sym - 0xffbe + 1) as u8)),
         // Anything else by the character it types without Shift.
         _ => keymap
             .char(detail, false)

@@ -172,7 +172,7 @@ impl App {
         })
     }
 
-    fn set_title(&self, window: Window, title: &str) {
+    pub(super) fn set_title(&self, window: Window, title: &str) {
         let _ = self.conn.change_property8(
             PropMode::REPLACE,
             window,
@@ -415,6 +415,7 @@ impl App {
                 | EditEffect::OpenWindow
                 | EditEffect::Shared => {}
                 EditEffect::Reveal(path) => system::reveal(&path),
+                EditEffect::OpenSettings => self.open_settings(),
                 EditEffect::Log(line) => log::line(&line),
             }
         }
@@ -488,7 +489,7 @@ impl App {
     }
 
     /// A request about `window` for the window manager.
-    fn send_to_root(&self, window: Window, kind: Atom, data: [u32; 5]) {
+    pub(super) fn send_to_root(&self, window: Window, kind: Atom, data: [u32; 5]) {
         let event = ClientMessageEvent::new(32, window, kind, data);
         let _ = self.conn.send_event(
             false,
@@ -508,23 +509,9 @@ impl App {
             return;
         }
         ew.dirty = false;
-        let (w, h) = ew.size;
         let (pixels, stride) = ew.session.doc.render_window();
-        let row = usize::from(w) * 4;
-        let _ = self.transfer.put(
-            &self.conn,
-            ew.window,
-            self.gc,
-            self.depth,
-            (0, 0),
-            (w, h),
-            |buf| {
-                for (y, out) in buf.chunks_exact_mut(row).enumerate() {
-                    if let Some(src) = pixels.get(y * stride..y * stride + row) {
-                        out.copy_from_slice(src);
-                    }
-                }
-            },
+        let _ = self.transfer.put_rows(
+            &self.conn, ew.window, self.gc, self.depth, ew.size, pixels, stride,
         );
     }
 

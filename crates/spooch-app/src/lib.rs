@@ -9,6 +9,7 @@ mod config;
 mod picker;
 mod place;
 mod session;
+mod settings_form;
 mod sharing;
 mod sync;
 
@@ -39,6 +40,7 @@ pub use config::{Config, Loaded};
 pub use picker::{Pick, Picker, Setup};
 pub use place::{EDITOR_MIN, centred, editor_rect, monitor_at};
 pub use session::{Clip, DRAG_SLOP, Deliverable, Effect, Host, Response, Session, dragged_line};
+pub use settings_form::{SettingsChange, SettingsFacts, SettingsForm};
 pub use sharing::{Field, Form, Sharing, device_label, looks_like_token};
 pub use sync::Syncing;
 

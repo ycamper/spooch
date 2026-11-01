@@ -15,6 +15,7 @@ pub use spooch_platform::log;
 mod menu;
 mod overlay;
 mod save;
+mod settings_window;
 mod system;
 mod tray;
 mod window;
@@ -175,6 +176,10 @@ struct App {
     session: Option<Session>,
     /// The editor window, while it's open.
     editor_window: Option<window::EditorWindow>,
+    /// The settings window, while it's open.
+    settings_window: Option<settings_window::SettingsWindow>,
+    /// The shortcuts are off while the settings window records one.
+    paused: bool,
     once: bool,
     save: Option<String>,
     settings: Settings,
@@ -349,6 +354,8 @@ pub fn run() -> Result<(), String> {
             .keeping_picks_in(config.styles_path(), format),
         session: None,
         editor_window: None,
+        settings_window: None,
+        paused: false,
         once,
         save,
         settings,
@@ -483,6 +490,9 @@ impl App {
     fn grab_shortcuts(&mut self) -> Vec<String> {
         for (code, mods) in self.grabs.drain(..) {
             let _ = self.conn.ungrab_key(code, self.root, ModMask::from(mods));
+        }
+        if self.paused {
+            return Vec::new();
         }
         // NumLock (Mod2) and CapsLock change the modifier state, so each
         // combination needs its own grab.
@@ -804,7 +814,7 @@ impl App {
                 Effect::OpenEditor(id) => self.open_editor_recent(id),
                 Effect::ShowCountdown(n) => self.show_countdown(n),
                 Effect::HideCountdown => self.hide_countdown(),
-                Effect::EditSettings => system::open(&self.config.settings_path()),
+                Effect::OpenSettings => self.open_settings(),
                 Effect::ShowSaved => match spooch_platform::save::to_show() {
                     Some(Ok(file)) => system::reveal(&file),
                     Some(Err(folder)) => system::open(&folder),
@@ -958,6 +968,7 @@ impl App {
             }
             self.paint();
             self.editor_paint();
+            self.settings_paint();
             self.conn.flush().map_err(|e| e.to_string())?;
         }
         log::line("quit");
@@ -976,12 +987,13 @@ impl App {
             } else if d[0] == SETTINGS_CHANGED {
                 log::line("settings changed; reloading");
                 self.reload_settings();
+                self.refresh_settings();
             } else {
                 self.welcome_answered();
             }
             return;
         }
-        if self.tray_event(&event) || self.editor_event(&event) {
+        if self.tray_event(&event) || self.editor_event(&event) || self.settings_event(&event) {
             return;
         }
         match event {

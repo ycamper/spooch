@@ -363,6 +363,10 @@ impl Session {
                 r.effects.push(Effect::Window(b));
                 return r;
             }
+            Some(Action::Settings) => {
+                r.effects.push(Effect::OpenSettings);
+                return r;
+            }
             Some(Action::Gallery(a)) => {
                 self.gallery_action(a, p, &mut r);
                 return r;

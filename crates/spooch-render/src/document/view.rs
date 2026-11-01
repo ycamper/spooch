@@ -96,6 +96,8 @@ impl WindowPart {
 pub(super) enum TopItem {
     /// Shows or hides the gallery.
     Gallery,
+    /// Opens the settings window.
+    Settings,
     Zoom,
     Copy,
     Window(WindowButton),
@@ -104,6 +106,7 @@ pub(super) enum TopItem {
 pub(super) struct TopLayout {
     pub rect: IRect,
     pub gallery: IRect,
+    pub settings: IRect,
     pub zoom: IRect,
     pub copy: IRect,
     /// Minimise, maximise and close, left to right.
@@ -390,15 +393,14 @@ impl Document {
         let font = self.bar_font();
         let zoom_w = (self.text_width(font.as_ref(), &self.zoom_text()) + 26.0 * s).ceil() as i32;
         let zoom = IRect::from_xywh(copy.left - (8.0 * s).round() as i32 - zoom_w, y, zoom_w, h);
-        let gallery = IRect::from_xywh(
-            d.top.left + (8.0 * s).round() as i32,
-            y,
-            (30.0 * s).round() as i32,
-            h,
-        );
+        let square = (30.0 * s).round() as i32;
+        let gallery = IRect::from_xywh(d.top.left + (8.0 * s).round() as i32, y, square, h);
+        let settings =
+            IRect::from_xywh(zoom.left - (6.0 * s).round() as i32 - square, y, square, h);
         Some(TopLayout {
             rect: d.top,
             gallery,
+            settings,
             zoom,
             copy,
             buttons: [
@@ -470,6 +472,8 @@ impl Document {
             Some(TopItem::Window(*b))
         } else if contains(&t.gallery, p) {
             Some(TopItem::Gallery)
+        } else if contains(&t.settings, p) {
+            Some(TopItem::Settings)
         } else if contains(&t.zoom, p) {
             Some(TopItem::Zoom)
         } else if contains(&t.copy, p) {
@@ -495,6 +499,7 @@ impl Document {
                 self.toggle_gallery();
             }
             TopItem::Copy => self.action = Some(Action::Copy),
+            TopItem::Settings => self.action = Some(Action::Settings),
             TopItem::Window(b) => self.action = Some(Action::Window(b)),
         }
         self.chrome_key = None;
@@ -504,6 +509,7 @@ impl Document {
         match item {
             TopItem::Gallery if self.gallery_on() => "Hide the gallery   Ctrl+H",
             TopItem::Gallery => "Show the gallery   Ctrl+H",
+            TopItem::Settings => "Settings",
             TopItem::Zoom => "Fit or 100%   Ctrl+scroll, Ctrl+0, Ctrl+1",
             TopItem::Copy => "Ctrl+C   copies the selected marks when some are selected",
             TopItem::Window(WindowButton::Minimize) => "Minimise",
@@ -543,9 +549,31 @@ impl Document {
             canvas.draw_rrect(RRect::new_rect_xy(glyph, 2.0 * s, 2.0 * s), &g);
             canvas.draw_line((side.right, glyph.top), (side.right, glyph.bottom), &g);
 
-            // The name, cut short before the zoom pill.
+            // The settings button: a gear.
+            let sb = Rect::from(t.settings).with_offset(-origin);
+            if hovered == Some(TopItem::Settings) {
+                canvas.draw_rrect(
+                    RRect::new_rect_xy(sb, 6.0 * s, 6.0 * s),
+                    &Paint::new(HOVER, None),
+                );
+            }
+            let c = sb.center();
+            canvas.draw_circle(c, 4.2 * s, &stroke(ICON, 1.6 * s));
+            let mut tooth = stroke(ICON, 2.2 * s);
+            tooth.set_stroke_cap(skia_safe::PaintCap::Butt);
+            for i in 0..8 {
+                let a = i as f32 * std::f32::consts::FRAC_PI_4;
+                let (dx, dy) = (a.cos(), a.sin());
+                canvas.draw_line(
+                    (c.x + dx * 5.0 * s, c.y + dy * 5.0 * s),
+                    (c.x + dx * 7.2 * s, c.y + dy * 7.2 * s),
+                    &tooth,
+                );
+            }
+
+            // The name, cut short before the settings button.
             let name_x = gb.right + 10.0 * s;
-            let room = (t.zoom.left - r.left) as f32 - name_x - 14.0 * s;
+            let room = (t.settings.left - r.left) as f32 - name_x - 14.0 * s;
             canvas.draw_str(ellipsize(font, &self.name, room), (name_x, mid), font, &p);
 
             let zoom = Rect::from(t.zoom).with_offset(-origin);

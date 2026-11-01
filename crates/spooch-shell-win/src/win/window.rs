@@ -550,6 +550,7 @@ fn carry_out(hwnd: HWND, response: Option<Response>) {
                 SetCapture(hwnd);
             },
             Effect::Window(b) => window_button(hwnd, b),
+            Effect::OpenSettings => super::settings_window::post(super::settings_window::NEWS_OPEN),
             Effect::StartDragOut => drag_out(hwnd),
             Effect::Deliver { save, .. } => {
                 let mut sw = Stopwatch::start();
