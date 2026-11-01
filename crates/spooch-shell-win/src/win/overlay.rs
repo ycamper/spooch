@@ -3,7 +3,7 @@
 //! drawn at full brightness.
 //!
 //! Releasing the selection opens the editor in place (the shared
-//! `Session`). Esc or a right-click cancels at any point.
+//! `Session`). Esc cancels at any point, a right-click until the first mark.
 //!
 //! Selection is tracked in physical virtual-desktop pixels. Dragging across
 //! monitors works because the window that received the mouse-down keeps
@@ -434,8 +434,16 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
             LRESULT(0)
         }
         WM_RBUTTONUP => {
-            with_overlay(|o| o.outcome = Some(Outcome::Cancelled));
-            post_done();
+            with_overlay(|o| match o.editor.as_mut() {
+                Some(ed) => {
+                    let r = ed.right_click();
+                    carry_out(o, r.effects);
+                }
+                None => {
+                    o.outcome = Some(Outcome::Cancelled);
+                    post_done();
+                }
+            });
             LRESULT(0)
         }
         // Holding Alt previews the framed result. Plain Alt would otherwise

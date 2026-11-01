@@ -8,8 +8,8 @@ use skia_safe::{Font, IRect, Paint, Point, RRect, Rect};
 use super::Document;
 use super::chrome::{Panel, contains, panel};
 use super::theme::{
-    BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron, draw_list, ellipsize,
-    rounded_panel, swatch, tick_box,
+    ACCENT, ACCENT_HOVER, BUTTON, DIVIDER, FIELD, MUTED, SELECTED, TEXT, centred_baseline, chevron,
+    draw_list, ellipsize, rounded_panel, swatch, tick_box,
 };
 
 /// Something on the bar.
@@ -81,12 +81,32 @@ const PAD: f32 = 4.0;
 const GAP: f32 = 4.0;
 pub(super) const TEXT_SIZE: f32 = 12.0;
 const MARGIN: f32 = 8.0;
+/// The least the window's footer cuts the name down to.
+const MIN_NAME: f32 = 80.0;
 /// A row of a bar list.
 const MENU_ROW: f32 = 26.0;
 /// The label of the Frame menu's last row.
 const PIN: &str = "Use for every capture";
 /// Room for a swatch or tick box before a menu row's name.
 const ROW_MARK: f32 = 22.0;
+
+/// Which line each item of `widths` goes on, filling each line up to
+/// `room` with `gap` between items. An item wider than `room` gets a line
+/// of its own.
+fn wrap(widths: &[f32], room: f32, gap: f32) -> Vec<usize> {
+    let (mut line, mut used) = (0, 0.0);
+    widths
+        .iter()
+        .map(|&w| {
+            if used > 0.0 && used + gap + w > room {
+                line += 1;
+                used = 0.0;
+            }
+            used += if used > 0.0 { gap + w } else { w };
+            line
+        })
+        .collect()
+}
 
 /// Where the bar and its items sit.
 pub(super) struct BarLayout {
@@ -215,15 +235,16 @@ impl Document {
         ]
         .into_iter()
         // A colour for frames with a top or edges, a title for those with
-        // a top; in the window, Copy is on the top row.
+        // a top; Open only over the screen.
         .filter(|(item, _)| match item {
             BarItem::FrameColour => self.frame().has_colour(),
             BarItem::FrameTitle => self.frame().has_title(),
             _ => true,
         })
-        .filter(|(item, _)| !matches!(item, BarItem::Copy | BarItem::Window) || !self.in_window())
+        .filter(|(item, _)| *item != BarItem::Window || !self.in_window())
         .collect();
-        let widths: Vec<f32> = texts
+        let mut texts = texts;
+        let mut widths: Vec<f32> = texts
             .iter()
             .map(|(item, text)| {
                 let t = self.text_width(font.as_ref(), text);
@@ -233,46 +254,97 @@ impl Document {
                     BarItem::FrameColour => 24.0 * s,
                     BarItem::FrameTitle => (t + 20.0 * s).clamp(70.0 * s, 220.0 * s),
                     BarItem::Name => (t + 20.0 * s).max(160.0 * s),
-                    BarItem::Size => t + 12.0 * s,
+                    // A pixel spare, so rounding doesn't cut it short.
+                    BarItem::Size => t + 14.0 * s,
                     BarItem::Shadow => t + 20.0 * s,
                     _ => t + 22.0 * s,
                 }
             })
             .collect();
-        let inner: f32 = widths.iter().sum::<f32>() + GAP * s * (widths.len() - 1) as f32;
-        let w = (inner + 2.0 * PAD * s).ceil() as i32;
-        let h = (BAR_H * s).round() as i32;
-        let margin = (MARGIN * s).round() as i32;
-        let screen = self.screen();
-        // Below the canvas, else just inside its bottom. In the window, the
-        // footer.
+        let inner =
+            |widths: &[f32]| widths.iter().sum::<f32>() + GAP * s * (widths.len() - 1) as f32;
+        // The window's footer is as wide as the window: when it's narrow,
+        // the name gives way first, then the size goes.
+        if let Some(f) = self.dock().map(|d| d.foot) {
+            let room = f.width() as f32 - 2.0 * PAD * s;
+            let short = MIN_NAME * s;
+            let name_w = widths[0];
+            if inner(&widths) - name_w + short > room
+                && let Some(i) = texts.iter().position(|(item, _)| *item == BarItem::Size)
+            {
+                texts.remove(i);
+                widths.remove(i);
+            }
+            widths[0] = (room - (inner(&widths) - name_w)).clamp(short, name_w);
+        }
+        let docked = self.dock().map(|d| d.foot);
+        let one = (BAR_H * s).round() as i32;
+        let lines_h =
+            |n: usize| ((2.0 * PAD + n as f32 * ITEM_H + (n - 1) as f32 * GAP) * s).round() as i32;
+        // One line, unless there's no room for it beside the rail and the
+        // lines still fit below the canvas rather than over it.
+        let mut lines = vec![0; widths.len()];
+        if docked.is_none() {
+            let (lo, hi) = self.panel_span(self.bar_band(one));
+            let wrapped = wrap(&widths, (hi - lo) as f32 - 2.0 * PAD * s, GAP * s);
+            let n = wrapped.last().map_or(1, |l| l + 1);
+            if c.bottom + (MARGIN * s).round() as i32 + lines_h(n) <= self.screen().bottom {
+                lines = wrapped;
+            }
+        }
+        let n = lines.last().map_or(1, |l| l + 1);
+        let widest = (0..n)
+            .map(|l| {
+                let ws: Vec<f32> = (0..widths.len())
+                    .filter(|&i| lines[i] == l)
+                    .map(|i| widths[i])
+                    .collect();
+                inner(&ws)
+            })
+            .fold(0.0, f32::max);
+        let w = (widest + 2.0 * PAD * s).ceil() as i32;
+        let h = lines_h(n);
+        let (x, y) = match docked {
+            Some(f) => (f.left, f.top + (f.height() - one) / 2),
+            None => {
+                let band = self.bar_band(h);
+                (self.panel_x(w, band), band.0)
+            }
+        };
+        let rect = docked.unwrap_or(IRect::from_xywh(x, y, w, h));
+
+        let mut items = Vec::with_capacity(texts.len());
+        let mut left = x as f32 + PAD * s;
+        let item_h = (ITEM_H * s).round() as i32;
+        for (i, ((item, text), width)) in texts.into_iter().zip(widths).enumerate() {
+            if i > 0 && lines[i] != lines[i - 1] {
+                left = x as f32 + PAD * s;
+            }
+            let top = y as f32 + (PAD + lines[i] as f32 * (ITEM_H + GAP)) * s;
+            let r = IRect::from_xywh(
+                left.round() as i32,
+                top.round() as i32,
+                width.round() as i32,
+                item_h,
+            );
+            items.push((item, r, text));
+            left += width + GAP * s;
+        }
+        BarLayout { rect, items }
+    }
+
+    /// The rows a bar `h` tall takes over the screen: below the canvas,
+    /// else just inside its bottom.
+    fn bar_band(&self, h: i32) -> (i32, i32) {
+        let margin = (MARGIN * self.scale).round() as i32;
+        let (c, screen) = (self.canvas, self.screen());
         let below = c.bottom + margin;
         let y = if below + h <= screen.bottom {
             below
         } else {
             c.bottom - margin - h
         };
-        let docked = self.dock().map(|d| d.foot);
-        let (x, y) = match docked {
-            Some(f) => (f.left, f.top + (f.height() - h) / 2),
-            None => (c.left.min(screen.right - w).max(screen.left), y),
-        };
-        let rect = docked.unwrap_or(IRect::from_xywh(x, y, w, h));
-
-        let mut items = Vec::with_capacity(texts.len());
-        let mut left = x as f32 + PAD * s;
-        let top = (y as f32 + (BAR_H - ITEM_H) * s / 2.0).round() as i32;
-        for ((item, text), width) in texts.into_iter().zip(widths) {
-            let r = IRect::from_xywh(
-                left.round() as i32,
-                top,
-                width.round() as i32,
-                (ITEM_H * s).round() as i32,
-            );
-            items.push((item, r, text));
-            left += width + GAP * s;
-        }
-        BarLayout { rect, items }
+        (y, y + h)
     }
 
     /// The open bar menu, over its button: the list and each row.
@@ -476,6 +548,8 @@ impl Document {
                     }
                     BarItem::FrameTitle => (Some(FIELD), TEXT),
                     BarItem::Size => (None, MUTED),
+                    // The main action stands out.
+                    BarItem::Copy => (Some(if hover { ACCENT_HOVER } else { ACCENT }), TEXT),
                     _ => (Some(if hover { SELECTED } else { BUTTON }), TEXT),
                 };
                 if let Some(bg) = bg {
@@ -537,6 +611,31 @@ mod tests {
             .find(|(i, ..)| *i == which)
             .map(|(_, r, _)| r)
             .unwrap()
+    }
+
+    #[test]
+    fn the_bar_keeps_clear_of_the_rail_and_wraps_only_without_room() {
+        let (mut d, _) = placed();
+        let overlaps = |a: IRect, b: IRect| {
+            a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+        };
+        // Room enough: one line from the canvas's left edge.
+        d.set_screens(vec![IRect::from_ltrb(0, 0, 1200, 800)]);
+        let b = d.bar_layout();
+        assert_eq!(b.rect.left, 100);
+        assert_eq!(b.rect.height(), BAR_H as i32);
+        // Too little beside the rail: it wraps, clear of the rail and on
+        // the screen.
+        d.set_screens(vec![IRect::from_ltrb(0, 0, 560, 800)]);
+        let rail = d.rail_layout().rect;
+        let b = d.bar_layout();
+        assert!(b.rect.height() > BAR_H as i32, "{:?}", b.rect);
+        assert!(!overlaps(b.rect, rail), "{:?} over {rail:?}", b.rect);
+        for (item, r, _) in &b.items {
+            assert!(r.left >= b.rect.left && r.right <= b.rect.right, "{item:?}");
+            assert!(r.top >= b.rect.top && r.bottom <= b.rect.bottom, "{item:?}");
+            assert!(r.right <= 560, "{item:?} off the screen");
+        }
     }
 
     #[test]

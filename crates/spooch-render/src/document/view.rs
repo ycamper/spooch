@@ -11,8 +11,8 @@ use skia_safe::{
 
 use super::chrome::{Panel, contains, panel};
 use super::theme::{
-    ACCENT, ACCENT_HOVER, BACKDROP, CLOSE_HOVER, DIVIDER, HOVER, ICON, MUTED, PANEL, TEXT,
-    centred_baseline, ellipsize, hex,
+    BACKDROP, CLOSE_HOVER, DIVIDER, HOVER, ICON, MUTED, PANEL, TEXT, centred_baseline, ellipsize,
+    hex,
 };
 use super::theme::{cross, outlined_pill};
 use super::{Action, Document, canvas_surface};
@@ -21,6 +21,8 @@ use super::{Action, Document, canvas_surface};
 const TOP_H: f32 = 40.0;
 const ROW_H: f32 = 36.0;
 const FOOT_H: f32 = 36.0;
+/// The docked rail's buttons start this far below the top row.
+pub(super) const RAIL_INSET: f32 = 4.0;
 /// Room round the capture when it's fitted.
 const FIT_PAD: f32 = 24.0;
 /// The zoom steps Ctrl+= and Ctrl+- go through.
@@ -99,7 +101,6 @@ pub(super) enum TopItem {
     /// Opens the settings window.
     Settings,
     Zoom,
-    Copy,
     Window(WindowButton),
 }
 
@@ -108,7 +109,6 @@ pub(super) struct TopLayout {
     pub gallery: IRect,
     pub settings: IRect,
     pub zoom: IRect,
-    pub copy: IRect,
     /// Minimise, maximise and close, left to right.
     pub buttons: [(WindowButton, IRect); 3],
 }
@@ -182,6 +182,13 @@ impl Document {
             self.to_screen(Point::new(r.right, r.bottom)),
         );
         Rect::from_ltrb(a.x, a.y, b.x, b.y)
+    }
+
+    /// The height the docked rail has, in the window.
+    pub(super) fn rail_room(&self) -> Option<i32> {
+        let v = self.view?;
+        let px = |v: f32| (v * self.scale).round() as i32;
+        Some(v.size.1 - px(TOP_H) - px(FOOT_H) - px(RAIL_INSET))
     }
 
     /// The docked areas, in the window.
@@ -364,8 +371,8 @@ impl Document {
             || overflows(c.height(), v.zoom, d.area.height(), self.scale)
     }
 
-    /// The top row: the zoom pill and Copy, then the window buttons at the
-    /// right edge.
+    /// The top row: the gallery button and name at the left, settings and
+    /// the zoom pill, then the window buttons at the right edge.
     pub(super) fn top_layout(&self) -> Option<TopLayout> {
         let d = self.dock()?;
         let s = self.scale;
@@ -388,11 +395,9 @@ impl Document {
         let h = (26.0 * s).round() as i32;
         let y = d.top.top + (d.top.height() - h) / 2;
         let pad = (10.0 * s).round() as i32;
-        let copy_w = (68.0 * s).round() as i32;
-        let copy = IRect::from_xywh(rects[0].left - pad - copy_w, y, copy_w, h);
         let font = self.bar_font();
         let zoom_w = (self.text_width(font.as_ref(), &self.zoom_text()) + 26.0 * s).ceil() as i32;
-        let zoom = IRect::from_xywh(copy.left - (8.0 * s).round() as i32 - zoom_w, y, zoom_w, h);
+        let zoom = IRect::from_xywh(rects[0].left - pad - zoom_w, y, zoom_w, h);
         let square = (30.0 * s).round() as i32;
         let gallery = IRect::from_xywh(d.top.left + (8.0 * s).round() as i32, y, square, h);
         let settings =
@@ -402,7 +407,6 @@ impl Document {
             gallery,
             settings,
             zoom,
-            copy,
             buttons: [
                 (buttons[0], rects[0]),
                 (buttons[1], rects[1]),
@@ -476,8 +480,6 @@ impl Document {
             Some(TopItem::Settings)
         } else if contains(&t.zoom, p) {
             Some(TopItem::Zoom)
-        } else if contains(&t.copy, p) {
-            Some(TopItem::Copy)
         } else {
             None
         }
@@ -498,7 +500,6 @@ impl Document {
             TopItem::Gallery => {
                 self.toggle_gallery();
             }
-            TopItem::Copy => self.action = Some(Action::Copy),
             TopItem::Settings => self.action = Some(Action::Settings),
             TopItem::Window(b) => self.action = Some(Action::Window(b)),
         }
@@ -511,7 +512,6 @@ impl Document {
             TopItem::Gallery => "Show the gallery   Ctrl+H",
             TopItem::Settings => "Settings",
             TopItem::Zoom => "Fit or 100%   Ctrl+scroll, Ctrl+0, Ctrl+1",
-            TopItem::Copy => "Ctrl+C   copies the selected marks when some are selected",
             TopItem::Window(WindowButton::Minimize) => "Minimise",
             TopItem::Window(WindowButton::Maximize) if self.window_maximized => "Restore",
             TopItem::Window(WindowButton::Maximize) => "Maximise",
@@ -519,7 +519,7 @@ impl Document {
         }
     }
 
-    /// The top row's panel: the capture's name, quiet, then zoom and Copy.
+    /// The top row's panel: the capture's name, quiet, then zoom.
     pub(super) fn draw_top(&self, t: &TopLayout, hovered: Option<TopItem>) -> Panel {
         let s = self.scale;
         let r = t.rect;
@@ -581,17 +581,6 @@ impl Document {
             let text = fill(TEXT);
             let tw = self.text_width(Some(font), &zoom_text);
             canvas.draw_str(&zoom_text, (zoom.center_x() - tw / 2.0, mid), font, &text);
-
-            let copy = Rect::from(t.copy).with_offset(-origin);
-            let bg = if hovered == Some(TopItem::Copy) {
-                ACCENT_HOVER
-            } else {
-                ACCENT
-            };
-            let b = fill(bg);
-            canvas.draw_rrect(RRect::new_rect_xy(copy, 6.0 * s, 6.0 * s), &b);
-            let tw = self.text_width(Some(font), "Copy");
-            canvas.draw_str("Copy", (copy.center_x() - tw / 2.0, mid), font, &text);
 
             // The window buttons: a quiet glyph each, the hovered one
             // lit (close in red, as Windows does).
@@ -811,6 +800,7 @@ fn panel_image(p: &Panel) -> Option<Image> {
 #[cfg(test)]
 mod tests {
     use super::super::GalleryAction;
+    use super::super::bar::BarItem;
     use super::super::tests::{drag, placed};
     use super::*;
 
@@ -882,9 +872,14 @@ mod tests {
         let b = d.to_screen(Point::new(280.0, 150.0));
         assert!(drag(&mut d, (a.x, a.y), (b.x, b.y)));
         assert_eq!(d.counts().arrows, 1);
-        // The top row's Copy asks the shell to copy; the chrome is docked.
-        let t = d.top_layout().unwrap();
-        let c = Rect::from(t.copy).center();
+        // The bar's Copy asks the shell to copy; the chrome is docked.
+        let (_, copy, _) = d
+            .bar_layout()
+            .items
+            .into_iter()
+            .find(|(i, ..)| *i == BarItem::Copy)
+            .unwrap();
+        let c = Rect::from(copy).center();
         d.begin_drag(c);
         assert_eq!(d.take_action(), Some(Action::Copy));
         // The rail sits right of the gallery, or at the edge without it.
@@ -1046,5 +1041,29 @@ mod tests {
         assert!(other.paste(&copied));
         assert_eq!(other.counts().arrows, 1);
         assert!(!other.paste("not marks"));
+    }
+
+    #[test]
+    fn a_short_window_wraps_the_rail_and_fits_the_footer() {
+        let (mut d, _) = placed();
+        d.set_window_size(1200, 900);
+        let tall = d.rail_layout();
+        d.set_window_size(560, 380);
+        let short = d.rail_layout();
+        assert!(short.rect.width() > tall.rect.width(), "two columns");
+        let dock = d.dock().unwrap();
+        for (tool, b) in &short.buttons {
+            assert!(
+                b.left >= short.rect.left
+                    && b.right <= short.rect.right
+                    && b.top >= short.rect.top
+                    && b.bottom <= dock.foot.top,
+                "{tool:?} at {b:?} is off the rail"
+            );
+        }
+        // Copy is in the footer, which fits the window.
+        let bar = d.bar_layout();
+        assert!(bar.items.iter().any(|(i, ..)| *i == BarItem::Copy));
+        assert!(bar.items.iter().all(|(_, r, _)| r.right <= dock.foot.right));
     }
 }

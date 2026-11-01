@@ -31,9 +31,9 @@ const GAP: f32 = 2.0;
 const SEPARATOR: f32 = 7.0;
 /// Space between chrome and the canvas.
 const MARGIN: f32 = 8.0;
-/// Separators after these tools: shapes and effects, then lines and pen,
-/// then steps and redact.
-const GROUP_ENDS: [Tool; 2] = [Tool::Pixelate, Tool::Pen];
+/// Separators after these tools: shapes and effects, lines and pen, steps
+/// and redact, then the tools without a key.
+const GROUP_ENDS: [Tool; 3] = [Tool::Pixelate, Tool::Pen, Tool::Redact];
 /// Style row sizes.
 const ROW_H: f32 = 32.0;
 const ROW_PAD: f32 = 8.0;
@@ -144,6 +144,46 @@ pub(super) enum Hit {
 pub(super) struct RailLayout {
     pub rect: IRect,
     pub buttons: Vec<(Tool, IRect)>,
+    /// The lines between groups, across the rail.
+    pub separators: Vec<f32>,
+}
+
+/// The rail's buttons in `cols` columns, at 100% and from inside its
+/// padding. Each group starts a row.
+struct RailGrid {
+    /// Each tool's top-left corner.
+    at: Vec<(Tool, f32, f32)>,
+    /// The lines between groups.
+    separators: Vec<f32>,
+    size: (f32, f32),
+}
+
+impl RailGrid {
+    fn new(cols: usize) -> RailGrid {
+        let mut at = Vec::with_capacity(Tool::ALL.len());
+        let mut separators = Vec::new();
+        let (mut col, mut y) = (0, 0.0);
+        for (i, tool) in Tool::ALL.into_iter().enumerate() {
+            at.push((tool, col as f32 * (BUTTON_W + GAP), y));
+            col += 1;
+            let last = i + 1 == Tool::ALL.len();
+            let end = GROUP_ENDS.contains(&tool) && !last;
+            if col == cols || end || last {
+                col = 0;
+                y += BUTTON_H + GAP;
+            }
+            if end {
+                separators.push(y + (SEPARATOR - GAP) / 2.0);
+                y += SEPARATOR;
+            }
+        }
+        let w = cols as f32 * BUTTON_W + (cols - 1) as f32 * GAP;
+        RailGrid {
+            at,
+            separators,
+            size: (w, y - GAP),
+        }
+    }
 }
 
 /// Where the style row and its controls sit.
@@ -271,18 +311,29 @@ impl Document {
         self.screen_at((self.canvas.left, self.canvas.top))
     }
 
+    /// The rail's columns: two when one won't fit the height it has.
+    fn rail_columns(&self) -> usize {
+        let room = self.rail_room().unwrap_or_else(|| self.screen().height());
+        let h = RailGrid::new(1).size.1;
+        if ((h + 2.0 * PAD) * self.scale).round() as i32 <= room {
+            1
+        } else {
+            2
+        }
+    }
+
     /// The rail's width.
     pub(super) fn rail_width(&self) -> i32 {
-        ((BUTTON_W + 2.0 * PAD) * self.scale).round() as i32
+        let w = RailGrid::new(self.rail_columns()).size.0;
+        ((w + 2.0 * PAD) * self.scale).round() as i32
     }
 
     pub(super) fn rail_layout(&self) -> RailLayout {
         let s = self.scale;
-        let seps = GROUP_ENDS.len() as f32;
-        let n = Tool::ALL.len() as f32;
-        let w = self.rail_width();
-        let h =
-            ((2.0 * PAD + n * BUTTON_H + (n - 1.0) * GAP + seps * SEPARATOR) * s).round() as i32;
+        let grid = RailGrid::new(self.rail_columns());
+        let (gw, gh) = grid.size;
+        let w = ((gw + 2.0 * PAD) * s).round() as i32;
+        let h = ((gh + 2.0 * PAD) * s).round() as i32;
         let margin = (MARGIN * s).round() as i32;
         let screen = self.screen();
         let c = self.canvas;
@@ -300,27 +351,62 @@ impl Document {
         let (x, y) = match self.dock() {
             Some(d) => {
                 rect = d.rail;
-                (d.rail.left, d.rail.top + (4.0 * s).round() as i32)
+                (
+                    d.rail.left,
+                    d.rail.top + (super::view::RAIL_INSET * s).round() as i32,
+                )
             }
             None => (x, y),
         };
+        let (x, y) = (x as f32 + PAD * s, y as f32 + PAD * s);
+        let (bw, bh) = ((BUTTON_W * s).round() as i32, (BUTTON_H * s).round() as i32);
+        let buttons = grid
+            .at
+            .into_iter()
+            .map(|(tool, bx, by)| {
+                let left = (x + bx * s).round() as i32;
+                (
+                    tool,
+                    IRect::from_xywh(left, (y + by * s).round() as i32, bw, bh),
+                )
+            })
+            .collect();
+        let separators = grid.separators.into_iter().map(|sy| y + sy * s).collect();
+        RailLayout {
+            rect,
+            buttons,
+            separators,
+        }
+    }
 
-        let mut buttons = Vec::with_capacity(Tool::ALL.len());
-        let mut top = y as f32 + PAD * s;
-        for tool in Tool::ALL {
-            let b = IRect::from_xywh(
-                (x as f32 + PAD * s).round() as i32,
-                top.round() as i32,
-                (BUTTON_W * s).round() as i32,
-                (BUTTON_H * s).round() as i32,
-            );
-            buttons.push((tool, b));
-            top += (BUTTON_H + GAP) * s;
-            if GROUP_ENDS.contains(&tool) {
-                top += SEPARATOR * s;
+    /// How far across a floating panel in rows `band` (top, bottom) can
+    /// go: the screen, less the rail's side when they'd share rows.
+    pub(super) fn panel_span(&self, band: (i32, i32)) -> (i32, i32) {
+        let screen = self.screen();
+        let rail = self.rail_layout().rect;
+        let m = (MARGIN * self.scale).round() as i32;
+        let (mut lo, mut hi) = (screen.left, screen.right);
+        if rail.top < band.1 && rail.bottom > band.0 {
+            if rail.left + rail.right <= self.canvas.left + self.canvas.right {
+                lo = lo.max(rail.right + m);
+            } else {
+                hi = hi.min(rail.left - m);
             }
         }
-        RailLayout { rect, buttons }
+        (lo, hi)
+    }
+
+    /// Where a floating panel `w` wide in rows `band` goes across: lined up
+    /// with the canvas's left edge, slid to stay on the screen, and clear
+    /// of the rail when there's room. Panels keep their order and shape
+    /// wherever the selection is, so they can be learned.
+    pub(super) fn panel_x(&self, w: i32, band: (i32, i32)) -> i32 {
+        let (mut lo, mut hi) = self.panel_span(band);
+        if hi - lo < w {
+            let screen = self.screen();
+            (lo, hi) = (screen.left, screen.right);
+        }
+        self.canvas.left.min(hi - w).max(lo)
     }
 
     /// The style row above the canvas, or `None` when what's on show has
@@ -386,19 +472,13 @@ impl Document {
         let margin = (MARGIN * s).round() as i32;
         let screen = self.screen();
         let c = self.canvas;
-        // Above the canvas, else just inside its top, clear of a rail that
-        // had to go inside too.
-        let rail = self.rail_layout().rect;
-        let mut x = c.left;
+        // Above the canvas, else just inside its top.
         let y = if c.top - margin - h >= screen.top {
             c.top - margin - h
         } else {
-            if rail.left < c.right && rail.right > c.left {
-                x = rail.right + margin;
-            }
             c.top + margin
         };
-        let x = x.min(screen.right - w).max(screen.left);
+        let x = self.panel_x(w, (y, y + h));
         let mut rect = IRect::from_xywh(x, y, w, h);
         // In the window, docked under the top row.
         let (x, y) = match self.dock() {

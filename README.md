@@ -49,11 +49,11 @@ Linux targets; cross-compiling to `windows-gnu` isn't supported.
   reshape it; drag the capture's edges to crop or extend it.
 - **Enter** or **Ctrl+C** copies, **Ctrl+S** also saves to
   `Pictures\Spooch` (`$XDG_PICTURES_DIR/Spooch`), and **Ctrl+drag**, or
-  dragging the file name, drops it into another app as a file. **Esc** or
-  right-click cancels.
+  dragging the file name, drops it into another app as a file. **Esc**
+  cancels, and so does a right-click until the first mark.
 - **Ctrl+E** moves the capture into the editor window, with zoom and a
   gallery of Recents (**Ctrl+H** hides it).
-- Every capture is kept in Recents for 30 days or 2 GB. **Ctrl+Alt+Shift+2**
+- Captures you used or marked are kept in Recents for 30 days or 2 GB. **Ctrl+Alt+Shift+2**
   reopens the newest; PageUp and PageDown step through them.
 - **Settings...** in the tray, or the gear in the editor, changes shortcuts
   and the rest. They live in `%APPDATA%\Spooch\settings.txt`

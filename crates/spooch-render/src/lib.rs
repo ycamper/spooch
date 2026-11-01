@@ -959,24 +959,54 @@ pub const COUNTDOWN_PX: u32 = 120;
 /// square, `size` pixels across. Premultiplied BGRA rows; on an opaque
 /// window, the corners show `behind`.
 pub fn countdown_badge(n: u32, size: u32, behind: Option<Color4f>) -> Vec<u8> {
-    let s = size.max(16) as i32;
-    let f = s as f32;
-    draw_bgra((s, s), AlphaType::Premul, |canvas| {
+    let f = size.max(16) as f32;
+    badge(&n.to_string(), (f, f), f * 0.24, f * 0.6, behind)
+}
+
+/// The toast's height, in screen pixels at 100%.
+pub const TOAST_PX: f32 = 36.0;
+
+/// How long a toast stays up.
+pub const TOAST_MS: u32 = 900;
+
+/// A toast saying how a copy went: `text` on a dark pill at `scale`.
+/// Returns its size and premultiplied BGRA rows; on an opaque window, the
+/// corners show `behind`.
+pub fn toast(text: &str, scale: f32, behind: Option<Color4f>) -> ((i32, i32), Vec<u8>) {
+    let h = (TOAST_PX * scale.max(1.0)).round();
+    let size = Label::ui_typeface()
+        .map(|tf| Font::from_typeface(tf, h * 0.42).measure_str(text, None).0)
+        .unwrap_or(0.0);
+    let w = (size + h).round();
+    let px = badge(text, (w, h), h / 2.0, h * 0.42, behind);
+    ((w as i32, h as i32), px)
+}
+
+/// `text` centred in white on a dark rounded rectangle of `size`, with
+/// corner radius `r`, in a `font_px` UI font. Premultiplied BGRA rows.
+fn badge(text: &str, size: (f32, f32), r: f32, font_px: f32, behind: Option<Color4f>) -> Vec<u8> {
+    let (w, h) = size;
+    draw_bgra((w as i32, h as i32), AlphaType::Premul, |canvas| {
         if let Some(c) = behind {
             canvas.clear(c);
         }
-        let r = f * 0.24;
         canvas.draw_rrect(
-            RRect::new_rect_xy(Rect::from_wh(f, f), r, r),
+            RRect::new_rect_xy(Rect::from_wh(w, h), r, r),
             &fill(Color4f::new(0.08, 0.085, 0.1, 0.92)),
         );
         if let Some(tf) = Label::ui_typeface() {
-            let font = Font::from_typeface(tf, f * 0.6);
-            let text = n.to_string();
-            let (w, bounds) = font.measure_str(&text, None);
+            let font = Font::from_typeface(tf, font_px);
+            let (tw, bounds) = font.measure_str(text, None);
+            // Centred on capital height, so a descender doesn't lift it.
+            let cap = font.metrics().1.cap_height;
+            let baseline = if cap > 0.0 {
+                (h + cap) / 2.0
+            } else {
+                document::ink_baseline(&bounds, h / 2.0)
+            };
             canvas.draw_str(
-                &text,
-                ((f - w) / 2.0, document::ink_baseline(&bounds, f / 2.0)),
+                text,
+                ((w - tw) / 2.0, baseline),
                 &font,
                 &fill(Color4f::new(1.0, 1.0, 1.0, 1.0)),
             );
@@ -1525,6 +1555,20 @@ pub fn pixelate_region(canvas: &Canvas, image: &Image, rect: Rect, block: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_toast_fits_its_words() {
+        let ((w, h), px) = toast("Copied", 1.0, None);
+        assert_eq!(h, TOAST_PX as i32);
+        assert_eq!(px.len(), (w * h * 4) as usize);
+        let ((longer, _), _) = toast("Copied and saved", 1.0, None);
+        assert!(longer > w);
+        // Twice the size at 200%, and opaque in the middle.
+        let ((w2, h2), px2) = toast("Copied", 2.0, None);
+        assert_eq!(h2, h * 2);
+        assert!(w2 > w);
+        assert_eq!(px2[((h2 / 2 * w2 + 4) * 4 + 3) as usize], 235);
+    }
 
     #[test]
     fn light_presets_get_dark_step_digits() {

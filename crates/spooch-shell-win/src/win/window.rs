@@ -19,17 +19,18 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_MENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
-    GetCursorPos, GetSystemMetrics, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible, LoadCursorW,
-    MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE, SW_SHOWNORMAL,
-    SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_APP, WM_CHAR,
-    WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    GetCursorPos, GetSystemMetrics, GetWindowRect, HTCLIENT, IDC_ARROW, IsIconic, IsWindowVisible,
+    LoadCursorW, MINMAXINFO, MSG, PM_REMOVE, PeekMessageW, RegisterClassExW, SW_RESTORE,
+    SW_SHOWNORMAL, SetCursor, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+    WM_APP, WM_CHAR, WM_CLOSE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT,
+    WM_SETCURSOR, WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON,
@@ -320,10 +321,12 @@ extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         WM_GETMINMAXINFO => {
             let info = lparam.0 as *mut MINMAXINFO;
             if !info.is_null() {
+                // EDITOR_MIN is at 100%; the window is in physical pixels.
+                let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96) as i32;
                 unsafe {
                     (*info).ptMinTrackSize = POINT {
-                        x: EDITOR_MIN.0,
-                        y: EDITOR_MIN.1,
+                        x: EDITOR_MIN.0 * dpi / 96,
+                        y: EDITOR_MIN.1 * dpi / 96,
                     };
                 }
             }
@@ -556,8 +559,12 @@ fn carry_out(hwnd: HWND, response: Option<Response>) {
                 let mut sw = Stopwatch::start();
                 match with_window(|e| e.session.deliverable(save)) {
                     Some(Ok(d)) => {
-                        deliver(hwnd, d, &mut sw);
+                        let said = deliver(hwnd, d, &mut sw);
                         sw.report("editor copy");
+                        let mut over = RECT::default();
+                        if unsafe { GetWindowRect(hwnd, &mut over) }.is_ok() {
+                            super::badge::toast(said, over);
+                        }
                     }
                     Some(Err(e)) => log::line(format!("copy failed: {e}")),
                     None => {}

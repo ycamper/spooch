@@ -1255,3 +1255,11 @@ fn opacity_and_the_edge_sit_behind_more() {
     d.set_tool(Tool::Highlight);
     assert!(d.row_layout().unwrap().extras.is_none());
 }
+
+#[test]
+fn the_rail_runs_in_key_order() {
+    for (i, tool) in Tool::ALL.iter().enumerate() {
+        let key = char::from_digit((i as u32 + 1) % 10, 10).filter(|_| i < 10);
+        assert_eq!(tool.digit(), key, "{} is button {}", tool.name(), i + 1);
+    }
+}

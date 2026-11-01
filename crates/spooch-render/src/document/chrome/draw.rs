@@ -192,12 +192,13 @@ impl Document {
                     fg,
                     self.ui_typeface.as_ref(),
                 );
-                if GROUP_ENDS.contains(tool) {
-                    let y = rect.bottom + (GAP + SEPARATOR) * s / 2.0;
-                    let mut p = Paint::new(PANEL_EDGE, None);
-                    p.set_stroke_width(s.max(1.0));
-                    canvas.draw_line((rect.left + 3.0 * s, y), (rect.right - 3.0 * s, y), &p);
-                }
+            }
+            let mut p = Paint::new(PANEL_EDGE, None);
+            p.set_stroke_width(s.max(1.0));
+            let (left, right) = (bounds.left + 7.0 * s, bounds.right - 7.0 * s);
+            for y in &layout.separators {
+                let y = y - origin.y;
+                canvas.draw_line((left, y), (right, y), &p);
             }
         })
     }
@@ -737,7 +738,6 @@ impl Document {
                     crate::document::view::TopItem::Gallery => t.gallery,
                     crate::document::view::TopItem::Settings => t.settings,
                     crate::document::view::TopItem::Zoom => t.zoom,
-                    crate::document::view::TopItem::Copy => t.copy,
                     crate::document::view::TopItem::Window(w) => {
                         t.buttons.iter().find(|(b, _)| *b == w).map(|(_, r)| *r)?
                     }

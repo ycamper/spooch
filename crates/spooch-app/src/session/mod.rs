@@ -16,7 +16,7 @@ use spooch_platform::log::ms_since;
 use spooch_platform::recents::Recents;
 use spooch_platform::save::LocalTime;
 use spooch_render::skia_safe::{IRect, Point};
-use spooch_render::{Action, Cursor, Document, Key, KeyOutcome, Mods, Styles};
+use spooch_render::{Action, Counts, Cursor, Document, Key, KeyOutcome, Mods, Styles};
 
 pub use deliver::{Clip, Deliverable};
 pub use effect::{DRAG_SLOP, Effect, Response, dragged_line};
@@ -89,7 +89,8 @@ pub struct Session {
     saved: Option<String>,
     /// Whether closing keeps it in Recents: once it's been copied, saved,
     /// shared, dragged out or taken to the editor window, or when it came
-    /// from Recents. A capture cancelled before any of that isn't kept.
+    /// from Recents. A capture cancelled before any of that is kept only
+    /// if it has marks.
     wanted: bool,
 }
 
@@ -444,6 +445,21 @@ impl Session {
             r.repaint = true;
         }
         r
+    }
+
+    /// A right-click: in the overlay it cancels, but only before the first
+    /// mark, so a stray one can't throw work away.
+    pub fn right_click(&mut self) -> Response {
+        let mut r = Response::default();
+        if self.host == Host::Overlay && !self.has_marks() {
+            r.effects.push(Effect::Cancel);
+        }
+        r
+    }
+
+    /// Whether there are marks, or one being typed.
+    fn has_marks(&self) -> bool {
+        self.doc.is_typing() || self.doc.counts() != Counts::default()
     }
 
     /// A key was let go.

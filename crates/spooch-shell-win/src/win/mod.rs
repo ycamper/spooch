@@ -1,6 +1,7 @@
 //! The Windows shell's wiring: tray, shortcuts, capture, the overlay and
 //! the editor window.
 
+mod badge;
 mod capture;
 mod capture_dxgi;
 mod capture_gdi;
@@ -600,6 +601,8 @@ fn reopen(backend: &mut Backend, id: &str) -> Option<Stopwatch> {
 
 /// Hotkey pressed: capture everything, then show the overlay.
 fn capture(backend: &mut Backend) -> Option<Stopwatch> {
+    // Off the screen before it's captured.
+    badge::hide_toast();
     let mut sw = Stopwatch::start();
     let mons = monitors::enumerate();
     sw.mark(format!("enumerated {} monitor(s)", mons.len()));
@@ -664,7 +667,10 @@ fn complete(owner: HWND, mut sw: Stopwatch) {
         (overlay::Outcome::Region(r, save), Some(px)) => {
             sw.mark(format!("region at ({}, {})", r.left, r.top));
             match Deliverable::new(px, done.format, &done.stem, save, done.counts) {
-                Ok(d) => editing::deliver(owner, d, &mut sw),
+                Ok(d) => {
+                    let said = editing::deliver(owner, d, &mut sw);
+                    badge::toast(said, r);
+                }
                 Err(e) => sw.mark(format!("encoding failed: {e}")),
             }
         }

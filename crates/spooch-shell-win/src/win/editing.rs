@@ -38,7 +38,8 @@ pub(super) fn drag_dir() -> PathBuf {
 
 /// Put a finished image on the clipboard, and save it to Pictures when it
 /// carries a file. `owner` owns the clipboard data; `sw` times each step.
-pub(super) fn deliver(owner: HWND, d: Deliverable, sw: &mut Stopwatch) {
+/// Returns what happened, for a toast.
+pub(super) fn deliver(owner: HWND, d: Deliverable, sw: &mut Stopwatch) -> &'static str {
     let copy = |c: Clip| {
         let img = Image {
             width: c.width,
@@ -48,7 +49,7 @@ pub(super) fn deliver(owner: HWND, d: Deliverable, sw: &mut Stopwatch) {
         };
         super::clipboard::set_image(owner, &img, &c.png)
     };
-    d.deliver(copy, super::save::folder, &mut |line| sw.mark(line));
+    d.deliver(copy, super::save::folder, &mut |line| sw.mark(line))
 }
 
 /// Put `text` on the clipboard (`owner` owns it).

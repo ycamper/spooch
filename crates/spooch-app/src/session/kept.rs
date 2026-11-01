@@ -56,14 +56,15 @@ fn kept_thumb(recents: &Recents, id: &str) -> Option<Pixels> {
 impl Session {
     /// Keep the capture in Recents on a background thread, so closing
     /// never waits on PNG encoding. `done` gets the log line once it's
-    /// written, on that thread. A capture nobody kept (`wanted`) is let go.
+    /// written, on that thread. A capture nobody used (`wanted`) and
+    /// nobody marked is let go.
     pub fn keep_in_background(&mut self, done: impl FnOnce(String) + Send + 'static) {
         let Some(recents) = self.recents.clone() else {
             return;
         };
-        if !self.wanted {
+        if !self.wanted && !self.has_marks() {
             done(format!(
-                "not kept in recents: {} was never copied or saved",
+                "not kept in recents: {} was never marked, copied or saved",
                 self.id
             ));
             return;
