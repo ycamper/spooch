@@ -33,7 +33,9 @@ mod view;
 pub use bar::Action;
 pub use chrome::Panel;
 pub(crate) use chrome::panel;
-pub use frame::{Exported, FRAME_COLOURS, Frame, SHADOWS, load_frames};
+pub use frame::{
+    BACKGROUNDS, Backdrop, Exported, FRAME_COLOURS, Frame, PADDINGS, SHADOWS, load_frames,
+};
 pub use gallery::{Gallery, GalleryAction, SyncBadge, thumbnail};
 pub use keys::{Key, KeyOutcome, Mods, SHARE_SHORTCUT};
 pub use saved::LoadError;
@@ -345,8 +347,8 @@ pub struct Document {
     window_image: Option<Image>,
     /// Whether `window_image` has a frame or shadow round the capture.
     window_framed: bool,
-    /// The frame, colour, shadow and title `window_image` was drawn with.
-    window_frame_key: Option<(Frame, u8, u8, String)>,
+    /// The framing and title `window_image` was drawn with.
+    window_frame_key: Option<(style::Framing, String)>,
     /// Whether the pointer is on a canvas edge, which shows the crop
     /// handles in the editor window.
     edge_hover: bool,

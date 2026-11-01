@@ -190,13 +190,29 @@ pub struct Styles {
 }
 
 /// What goes round the output.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Framing {
     pub frame: Frame,
     /// Into `FRAME_COLOURS`.
     pub frame_colour: u8,
     /// Into `SHADOWS`.
     pub shadow: u8,
+    /// Into `BACKGROUNDS`.
+    pub background: u8,
+    /// Into `PADDINGS`.
+    pub padding: u8,
+}
+
+impl Default for Framing {
+    fn default() -> Self {
+        Framing {
+            frame: Frame::NONE,
+            frame_colour: 0,
+            shadow: 0,
+            background: 0,
+            padding: super::frame::DEFAULT_PADDING,
+        }
+    }
 }
 
 impl Default for Styles {

@@ -10,6 +10,7 @@ use skia_safe::{
     MaskFilter, Paint, PaintCap, PathBuilder, PathEffect, Point, RRect, Rect, Typeface, images,
 };
 
+use super::Framed;
 use super::registry::Loaded;
 use super::spec::{Align, Fill, Item, LineStyle, MenuStyle, Outline, Typeface as Face};
 
@@ -61,10 +62,12 @@ const STANDARD: Shadow = Shadow {
 
 impl Shadow {
     /// The shadow at choice `level`, or none if `frame` turns shadows off.
-    pub(super) fn of(level: u8, frame: Option<&Loaded>) -> Shadow {
+    /// Auto is one when the capture is `framed` (by a frame or a
+    /// background).
+    pub(super) fn of(level: u8, framed: bool, frame: Option<&Loaded>) -> Shadow {
         match frame {
             Some(f) if !f.spec.shadow => NO_SHADOW,
-            None if level == 0 => NO_SHADOW,
+            _ if level == 0 && !framed => NO_SHADOW,
             _ => SHADOWS[usize::from(level).min(SHADOWS.len() - 1)].1,
         }
     }
@@ -88,15 +91,24 @@ pub(super) struct Geometry {
     pub content: IRect,
     pub width: i32,
     pub height: i32,
+    /// Room round the frame: the padding, or the shadow's.
+    pub margin: i32,
+    /// Extra room under it for the shadow's drop.
+    pub drop: i32,
 }
 
 /// The framed result's geometry for content `w` by `h`; `k` is pixels per
-/// screen pixel. No frame and no shadow is the capture as it is.
-pub(super) fn geometry(frame: Option<&Loaded>, sh: Shadow, w: i32, h: i32, k: f32) -> Geometry {
+/// screen pixel. No frame, shadow or background is the capture as it is.
+pub(super) fn geometry(f: &Framed, w: i32, h: i32, k: f32) -> Geometry {
     let px = |v: f32| (v * k).round() as i32;
-    let m = px(sh.margin());
-    let drop = if sh.is_none() { 0 } else { px(sh.drop) };
-    let [l, t, r, b] = match frame {
+    let sh = f.shadow;
+    // A background's padding holds the shadow too.
+    let (m, drop) = match f.backdrop {
+        Some((_, pad)) => (px(pad), 0),
+        None if sh.is_none() => (0, 0),
+        None => (px(sh.margin()), px(sh.drop)),
+    };
+    let [l, t, r, b] = match f.frame.as_deref() {
         None => [0; 4],
         Some(f) => match &f.spec.image {
             Some(img) => img.content.map(px),
@@ -110,6 +122,8 @@ pub(super) fn geometry(frame: Option<&Loaded>, sh: Shadow, w: i32, h: i32, k: f3
         content: IRect::from_xywh(m + l, m + t, w, h),
         width: w + l + r + 2 * m,
         height: h + t + b + 2 * m + drop,
+        margin: m,
+        drop,
     }
 }
 
@@ -123,13 +137,11 @@ pub(super) fn is_light(c: Color4f) -> bool {
     crate::luma(c) > 0.6
 }
 
-/// Draw `frame` round opaque BGRA `content` onto `canvas`, which is the
+/// Draw `f` round opaque BGRA `content` onto `canvas`, which is the
 /// framed result's size.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn draw(
     canvas: &Canvas,
-    frame: Option<&Loaded>,
-    sh: Shadow,
+    f: &Framed,
     colour: u8,
     title: &str,
     content: &[u8],
@@ -141,8 +153,13 @@ pub(super) fn draw(
     else {
         return;
     };
-    let g = geometry(frame, sh, w, h, k);
-    let Some(f) = frame else {
+    let g = geometry(f, w, h, k);
+    if let Some((backdrop, _)) = f.backdrop {
+        let all = Rect::from_wh(g.width as f32, g.height as f32);
+        backdrop.draw(canvas, all, &shot, k);
+    }
+    let sh = f.shadow;
+    let Some(f) = f.frame.as_deref() else {
         // No frame: the capture, square, with its shadow if any.
         let at = g.content;
         shadow(canvas, RRect::new_rect(Rect::from(at)), sh, k);
@@ -292,8 +309,7 @@ fn draw_image_frame(canvas: &Canvas, f: &Loaded, shot: &Image, g: &Geometry, sh:
     let Some(picture) = f.images.get(&spec.file) else {
         return;
     };
-    let m = sh.margin() * k;
-    let drop = if sh.is_none() { 0.0 } else { sh.drop * k };
+    let (m, drop) = (g.margin as f32, g.drop as f32);
     let dst = Rect::from_ltrb(m, m, g.width as f32 - m, g.height as f32 - m - drop);
     let r = f.spec.radius * k;
     shadow(canvas, RRect::new_rect_xy(dst, r, r), sh, k);

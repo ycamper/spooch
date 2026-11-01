@@ -21,6 +21,10 @@ pub enum BarItem {
     Frame,
     /// The drop shadow round the output.
     Shadow,
+    /// What the output sits on.
+    Background,
+    /// The room round the output on its background.
+    Padding,
     /// The window frame's colour, for frames with a window top.
     FrameColour,
     /// The text the window frame shows; click to type it.
@@ -40,6 +44,8 @@ pub(super) enum BarMenu {
     Frame,
     /// Every frame colour, over the colour swatch.
     Colour,
+    /// Every background, over the Background button.
+    Background,
 }
 
 impl BarMenu {
@@ -47,7 +53,13 @@ impl BarMenu {
         match self {
             BarMenu::Frame => BarItem::Frame,
             BarMenu::Colour => BarItem::FrameColour,
+            BarMenu::Background => BarItem::Background,
         }
+    }
+
+    /// Whether its rows start with a sample of what they pick.
+    fn has_samples(self) -> bool {
+        matches!(self, BarMenu::Colour | BarMenu::Background)
     }
 
     /// The index of the "Use for every capture" row, the Frame menu's
@@ -97,6 +109,8 @@ impl BarItem {
             BarItem::Format
                 | BarItem::Frame
                 | BarItem::Shadow
+                | BarItem::Background
+                | BarItem::Padding
                 | BarItem::FrameColour
                 | BarItem::FrameTitle
                 | BarItem::Window
@@ -111,6 +125,8 @@ impl BarItem {
             BarItem::Format => "Click to switch between PNG and JPEG",
             BarItem::Frame => "Click to pick a frame; hold Alt to preview",
             BarItem::Shadow => "Click to change the shadow; hold Alt to preview",
+            BarItem::Background => "Click to pick a background; hold Alt to preview",
+            BarItem::Padding => "Click to change the room round the capture",
             BarItem::FrameColour => "Click to pick the frame's colour",
             BarItem::FrameTitle => "Click to type the frame's title; Enter when done",
             BarItem::Window => "Ctrl+E   open in the editor window",
@@ -193,6 +209,16 @@ impl Document {
                 super::SHADOWS[usize::from(self.shadow())].0.to_string(),
             ),
             (
+                BarItem::Background,
+                super::BACKGROUNDS[usize::from(self.background())]
+                    .0
+                    .to_string(),
+            ),
+            (
+                BarItem::Padding,
+                format!("Padding {}", super::PADDINGS[usize::from(self.padding())]),
+            ),
+            (
                 BarItem::Size,
                 format!("{} \u{00d7} {}", c.width(), c.height()),
             ),
@@ -213,6 +239,7 @@ impl Document {
         .filter(|(item, _)| match item {
             BarItem::FrameColour => self.frame().has_colour(),
             BarItem::FrameTitle => self.frame().has_title(),
+            BarItem::Padding => self.background() != 0,
             _ => true,
         })
         .filter(|(item, _)| !matches!(item, BarItem::Copy | BarItem::Window) || !self.in_window())
@@ -223,12 +250,12 @@ impl Document {
                 let t = self.text_width(font.as_ref(), text);
                 match item {
                     // Room for the chevron.
-                    BarItem::Format | BarItem::Frame => t + 30.0 * s,
+                    BarItem::Format | BarItem::Frame | BarItem::Background => t + 30.0 * s,
                     BarItem::FrameColour => 24.0 * s,
                     BarItem::FrameTitle => (t + 20.0 * s).clamp(70.0 * s, 220.0 * s),
                     BarItem::Name => (t + 20.0 * s).max(160.0 * s),
                     BarItem::Size => t + 12.0 * s,
-                    BarItem::Shadow => t + 20.0 * s,
+                    BarItem::Shadow | BarItem::Padding => t + 20.0 * s,
                     _ => t + 22.0 * s,
                 }
             })
@@ -281,7 +308,7 @@ impl Document {
             .iter()
             .enumerate()
             .map(|(i, name)| {
-                let marked = menu == BarMenu::Colour || pin == Some(i);
+                let marked = menu.has_samples() || pin == Some(i);
                 self.text_width(font.as_ref(), name) + if marked { ROW_MARK * s } else { 0.0 }
             })
             .fold(0.0f32, f32::max);
@@ -318,6 +345,10 @@ impl Document {
                 .iter()
                 .map(|(n, _)| n.to_string())
                 .collect(),
+            BarMenu::Background => super::BACKGROUNDS
+                .iter()
+                .map(|(n, _)| n.to_string())
+                .collect(),
         }
     }
 
@@ -329,6 +360,7 @@ impl Document {
                 .position(|(f, _)| *f == self.frame())
                 .unwrap_or(0),
             BarMenu::Colour => usize::from(self.frame_colour()),
+            BarMenu::Background => usize::from(self.background()),
         }
     }
 
@@ -342,6 +374,7 @@ impl Document {
                 }
             }
             Some(BarMenu::Colour) => self.set_frame_colour(i as u8),
+            Some(BarMenu::Background) => self.set_background(i as u8),
             None => {}
         }
         self.close_bar_menu();
@@ -392,6 +425,8 @@ impl Document {
                     let is_pin = pin == Some(i);
                     if menu == BarMenu::Colour {
                         swatch(canvas, mark, 7.0 * s, self.frame_colour_shown(i as u8), s);
+                    } else if menu == BarMenu::Background {
+                        super::Backdrop::of(i as u8).draw_sample(canvas, mark, 7.0 * s, s);
                     } else if is_pin {
                         let y = rect.top + 0.5 * s;
                         let line = super::theme::stroke(DIVIDER, s);
@@ -399,7 +434,7 @@ impl Document {
                         tick_box(canvas, mark, pinned, s);
                     }
                     let on = in_use || (is_pin && pinned);
-                    let marked = menu == BarMenu::Colour || is_pin;
+                    let marked = menu.has_samples() || is_pin;
                     let indent = if marked { 10.0 + ROW_MARK } else { 10.0 };
                     let text_x = rect.left + indent * s;
                     if let (Some(font), Some(name)) = (&font, names.get(i)) {
@@ -435,6 +470,8 @@ impl Document {
             }
             BarItem::Frame => self.toggle_menu(BarMenu::Frame),
             BarItem::Shadow => self.set_shadow(self.shadow() + 1),
+            BarItem::Background => self.toggle_menu(BarMenu::Background),
+            BarItem::Padding => self.set_padding(self.padding() + 1),
             BarItem::FrameColour => self.toggle_menu(BarMenu::Colour),
             BarItem::FrameTitle => self.set_editing_title(!self.editing_title()),
             BarItem::Window => self.action = Some(Action::OpenWindow),
@@ -498,7 +535,7 @@ impl Document {
                     // A dot in the frame's colour.
                     swatch(canvas, rect.center(), 6.5 * s, self.frame_top_colour(), s);
                 }
-                if matches!(item, BarItem::Format | BarItem::Frame) {
+                if matches!(item, BarItem::Format | BarItem::Frame | BarItem::Background) {
                     // A small chevron after the name.
                     chevron(
                         canvas,
@@ -539,19 +576,28 @@ mod tests {
         d.set_name("Spooch 2026-10-04 at 10.30.00");
         let b = d.bar_layout();
         assert!(b.rect.top >= 200 + 8, "{:?}", b.rect);
-        assert_eq!(b.items.len(), 9, "no frame colour without a window frame");
-        let (_, _, name) = &b.items[0];
-        assert_eq!(name, "Spooch 2026-10-04 at 10.30.00.png");
-        let (_, _, frame) = &b.items[2];
-        assert_eq!(frame, "No frame");
-        let (_, _, shadow) = &b.items[3];
-        assert_eq!(shadow, "Auto shadow");
-        let (_, _, size) = &b.items[4];
-        assert_eq!(size, "200 \u{00d7} 100");
+        assert_eq!(b.items.len(), 10, "no frame colour or padding yet");
+        let texts: Vec<&str> = b.items.iter().map(|(_, _, t)| t.as_str()).collect();
+        assert_eq!(
+            texts[..6],
+            [
+                "Spooch 2026-10-04 at 10.30.00.png",
+                "PNG",
+                "No frame",
+                "Auto shadow",
+                "No background",
+                "200 \u{00d7} 100",
+            ]
+        );
+        // A background adds its padding.
+        d.set_background(5);
+        let b = d.bar_layout();
+        assert_eq!(b.items[5].2, "Padding 64");
+        d.set_background(0);
         // A window frame adds its colour swatch.
         d.set_frame(super::super::Frame::builtin("terminal-modern"));
         let b = d.bar_layout();
-        assert_eq!(b.items.len(), 11, "plus its colour and title");
+        assert_eq!(b.items.len(), 12, "plus its colour and title");
         assert_eq!(b.items[3].0, BarItem::FrameColour);
         assert_eq!(b.items[4].0, BarItem::FrameTitle);
         // The panels: rail, style row, bar, tab.
