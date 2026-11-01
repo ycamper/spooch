@@ -259,9 +259,6 @@ impl Shell {
         app::tray_menu(
             &self.settings,
             self.recents.as_ref().is_some_and(|r| r.latest().is_some()),
-            system::launch_at_login(),
-            LOGIN_LABEL,
-            &carry(|c| c.sharing.signed()),
         )
     }
 

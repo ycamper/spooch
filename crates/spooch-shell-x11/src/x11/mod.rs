@@ -725,9 +725,6 @@ impl App {
                 .recents
                 .as_ref()
                 .is_some_and(|r| r.latest().is_some()),
-            system::launch_at_login(),
-            "Start when I log in",
-            &self.carry.sharing.signed(),
         );
         let area = self
             .monitors()

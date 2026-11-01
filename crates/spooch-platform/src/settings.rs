@@ -1,6 +1,7 @@
 //! The settings file: a short, commented `key = value` text file people can
-//! edit by hand (the tray menu opens it). Unknown keys and bad values are
-//! reported and skipped, never fatal, so a typo can't stop Spooch starting.
+//! edit by hand (the settings window links to it). Unknown keys and bad
+//! values are reported and skipped, never fatal, so a typo can't stop
+//! Spooch starting.
 
 use std::fmt;
 use std::fs;
@@ -258,7 +259,7 @@ impl Settings {
             ),
             (
                 "share_server",
-                "Where captures are shared to. Sign in from the tray menu.",
+                "Where captures are shared to. Sign in from Settings.",
                 self.share_server.clone(),
             ),
             (

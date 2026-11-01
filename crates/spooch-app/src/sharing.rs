@@ -376,7 +376,7 @@ impl Sharing {
             .lock()
             .client
             .clone()
-            .ok_or("Sign in from the tray first")?;
+            .ok_or("Sign in from Settings first")?;
         let png = spooch_platform::encode_png(width, height, &bgra).map_err(|e| {
             log::line(format!("share failed: {e}"));
             "Share failed".to_string()

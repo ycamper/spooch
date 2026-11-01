@@ -56,7 +56,7 @@ impl Menu {
         for item in &items {
             let h = match item {
                 MenuItem::Entry { label, key, .. } => {
-                    longest = longest.max(text(label, key.as_deref()).len() as i32 + 4);
+                    longest = longest.max(text(label, key.as_deref()).len() as i32 + 2);
                     ROW_H
                 }
                 MenuItem::Separator => SEP_H,
@@ -219,7 +219,6 @@ impl Menu {
                     label,
                     key,
                     command,
-                    checked,
                 } => {
                     let bg = if self.hover == Some(i) { HOVER } else { BG };
                     fill(
@@ -233,11 +232,7 @@ impl Menu {
                     );
                     let fg = if command.is_some() { TEXT } else { DIM };
                     let _ = conn.change_gc(gc, &ChangeGCAux::new().foreground(fg).background(bg));
-                    let mark = match checked {
-                        Some(true) => "* ",
-                        _ => "  ",
-                    };
-                    let line = format!("{mark}{}", text(label, key.as_deref()));
+                    let line = text(label, key.as_deref());
                     let _ = conn.image_text8(
                         self.window,
                         gc,
