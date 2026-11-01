@@ -72,7 +72,7 @@ impl Document {
             picker: picker.as_ref().map(|k| (k.pill, k.list)),
             stickers: self.styles.stickers,
             sticker_menu: self.sticker_menu,
-            bar_menu: self.bar_menu,
+            frame_menu: self.frame_menu,
             loupe: self.loupe_at,
             maximized: self.window_maximized,
             gallery: self.gallery_key(),
@@ -130,12 +130,12 @@ impl Document {
             if !self.in_window() {
                 panels.push(self.draw_tab());
             }
-            if let Some((menu, list, rows)) = self.bar_menu_layout(&bar) {
+            if let Some((list, rows)) = self.frame_menu_layout(&bar) {
                 let hovered = match self.hovered {
                     Some(Hit::MenuOption(i)) => Some(i),
                     _ => None,
                 };
-                panels.push(self.draw_bar_menu(menu, list, &rows, hovered));
+                panels.push(self.draw_frame_menu(list, &rows, hovered));
             }
             if let Some(k) = &picker {
                 panels.extend(self.draw_picker(k));

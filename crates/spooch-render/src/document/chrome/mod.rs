@@ -279,7 +279,7 @@ pub(super) struct ChromeKey {
     picker: Option<(IRect, Option<IRect>)>,
     stickers: [u8; super::style::RECENT_STICKERS],
     sticker_menu: Option<usize>,
-    bar_menu: Option<super::bar::BarMenu>,
+    frame_menu: bool,
     loupe: Option<(i32, i32)>,
     maximized: bool,
     view: Option<ViewKey>,
@@ -757,7 +757,7 @@ impl Document {
         if let Some(g) = self.gallery_hit(p) {
             return Some(Hit::Gallery(g));
         }
-        if let Some((_, _, rows)) = self.bar_menu_layout(&self.bar_layout())
+        if let Some((_, rows)) = self.frame_menu_layout(&self.bar_layout())
             && let Some(i) = rows.iter().position(|r| contains(r, p))
         {
             return Some(Hit::MenuOption(i));
@@ -805,8 +805,8 @@ impl Document {
         {
             return true;
         }
-        self.bar_menu_layout(&self.bar_layout())
-            .is_some_and(|(_, list, _)| contains(&list, p))
+        self.frame_menu_layout(&self.bar_layout())
+            .is_some_and(|(list, _)| contains(&list, p))
             || self.sticker_grid().is_some_and(|g| contains(&g.rect, p))
             || self
                 .picker_layout()
@@ -828,11 +828,8 @@ impl Document {
             self.set_editing_title(false);
         }
         // An open menu closes on any press but one on it or its button.
-        if !matches!(
-            hit,
-            Some(Hit::MenuOption(_) | Hit::Bar(BarItem::Frame | BarItem::FrameColour))
-        ) {
-            self.close_bar_menu();
+        if !matches!(hit, Some(Hit::MenuOption(_) | Hit::Bar(BarItem::Frame))) {
+            self.close_frame_menu();
         }
         if !matches!(
             hit,
@@ -1035,7 +1032,7 @@ impl Document {
             bar.rect.bottom,
         ));
         add(self.tab_rect());
-        if let Some((_, list, _)) = self.bar_menu_layout(&bar) {
+        if let Some((list, _)) = self.frame_menu_layout(&bar) {
             add(list);
         }
         if let Some(k) = self.picker_layout() {

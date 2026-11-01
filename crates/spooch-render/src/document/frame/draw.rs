@@ -22,7 +22,7 @@ pub struct Shadow {
     pub drop: f32,
 }
 
-/// The shadow choices, by name, in the order the bar steps through them.
+/// The shadow choices, by name, in the order the Frame menu lists them.
 /// The first, Auto, is the standard shadow under a frame and none without
 /// one; the second is none.
 pub const SHADOWS: [(&str, Shadow); 5] = [

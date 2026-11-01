@@ -206,11 +206,6 @@ impl Document {
         }
     }
 
-    /// The colour the frame's top is drawn in now, for the bar's swatch.
-    pub(super) fn frame_top_colour(&self) -> Color4f {
-        self.frame_colour_shown(self.frame_colour())
-    }
-
     /// The finished image with its frame: what copy, save and drag-out
     /// produce. Straight BGRA, with transparency round a frame.
     pub fn export_image(&mut self) -> Exported {
@@ -517,21 +512,21 @@ mod tests {
                 .find(|(i, ..)| *i == which)
                 .map(|(_, r, _)| Rect::from(r).center())
         };
-        // The Frame button opens a list of every frame, then the pin; a row
-        // picks one.
+        // The Frame button opens a list of every frame, then the shadows,
+        // the colours for a frame that takes one, and the pin; a row picks
+        // one.
         d.begin_drag(item(&d, BarItem::Frame).unwrap());
-        let (_, _, rows) = d.bar_menu_layout(&d.bar_layout()).expect("open");
-        assert_eq!(rows.len(), Frame::all().len() + 1);
+        let (_, rows) = d.frame_menu_layout(&d.bar_layout()).expect("open");
+        let colours = Frame::all().len() + SHADOWS.len();
+        assert_eq!(rows.len(), colours + 1, "no frame takes no colour");
         d.begin_drag(Rect::from(rows[6]).center());
         assert_eq!(d.frame(), Frame::all()[6].0);
-        assert!(d.bar_menu_layout(&d.bar_layout()).is_none(), "closed");
-        // The colour swatch opens a list of every colour; a row picks one.
-        d.begin_drag(item(&d, BarItem::FrameColour).expect("a swatch"));
-        let (_, _, rows) = d.bar_menu_layout(&d.bar_layout()).expect("open");
-        assert_eq!(rows.len(), FRAME_COLOURS.len());
-        d.begin_drag(Rect::from(rows[4]).center());
+        let (_, rows) = d.frame_menu_layout(&d.bar_layout()).expect("open");
+        assert_eq!(rows.len(), colours + FRAME_COLOURS.len() + 1);
+        d.begin_drag(Rect::from(rows[colours + 4]).center());
         assert_eq!(d.frame_colour(), 4);
-        assert!(d.bar_menu_layout(&d.bar_layout()).is_none(), "closed");
+        d.begin_drag(item(&d, BarItem::Frame).unwrap());
+        assert!(d.frame_menu_layout(&d.bar_layout()).is_none(), "closed");
         // A window frame shows a title box; typing fills it, Enter ends.
         d.begin_drag(item(&d, BarItem::FrameTitle).expect("a title box"));
         assert!(d.editing_title());
@@ -555,6 +550,8 @@ mod tests {
         // No title box or colour without a window top or edges.
         d.set_frame(Frame::builtin("rounded"));
         assert!(item(&d, BarItem::FrameTitle).is_none());
-        assert!(item(&d, BarItem::FrameColour).is_none());
+        d.begin_drag(item(&d, BarItem::Frame).unwrap());
+        let (_, rows) = d.frame_menu_layout(&d.bar_layout()).expect("open");
+        assert_eq!(rows.len(), Frame::all().len() + SHADOWS.len() + 1);
     }
 }
