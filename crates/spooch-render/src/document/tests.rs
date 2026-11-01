@@ -1089,13 +1089,19 @@ fn a_marker_over_a_dark_page_lightens_it() {
     assert!(p[2] > 120 && p[1] > 100 && p[0] < p[2], "marker {p:?}");
 }
 
-#[test]
-fn stickers_stamp_size_swap_and_keep() {
+/// A white page big enough for stickers, snapping off.
+fn sticker_doc() -> Document {
     let (w, h) = (600u32, 400u32);
     let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
     let mut d =
         with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
     d.set_modifiers(false, true);
+    d
+}
+
+#[test]
+fn stickers_stamp_size_swap_and_keep() {
+    let mut d = sticker_doc();
     let last = |d: &Document| match d.marks.last() {
         Some(Mark::Sticker(s)) => *s,
         _ => panic!("no sticker"),
@@ -1153,10 +1159,7 @@ fn stickers_stamp_size_swap_and_keep() {
 
 #[test]
 fn the_sticker_grid_has_a_tab_per_kind() {
-    let (w, h) = (600u32, 400u32);
-    let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
-    let mut d =
-        with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
+    let mut d = sticker_doc();
     d.set_tool(Tool::Sticker);
     d.sticker_menu = Some(1);
     let g = d.sticker_grid().unwrap();
@@ -1178,10 +1181,7 @@ fn the_sticker_grid_has_a_tab_per_kind() {
 
 #[test]
 fn stamps_are_wide_and_lean_and_swaps_keep_the_area() {
-    let (w, h) = (600u32, 400u32);
-    let data = [255u8, 255, 255, 255].repeat((w * h) as usize);
-    let mut d =
-        with_room_for_chrome(Document::from_bgra(w, h, (w * 4) as usize, &data, 1.0).unwrap());
+    let mut d = sticker_doc();
     let at = |name: &str| {
         crate::STICKERS
             .iter()

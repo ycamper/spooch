@@ -116,8 +116,16 @@ stickers![
     ("pointer_text", Art::Pointer(PointerShape::Text)),
 ];
 
-/// How far a new stamp leans, in radians, anticlockwise.
+/// A new stamp's angle: leaning about 6 degrees anticlockwise.
 pub(crate) const STAMP_TILT: f32 = -0.1;
+
+/// The angle sticker `name` is placed at.
+pub(crate) fn placed_angle(name: &str) -> f32 {
+    match art_of(name) {
+        Some(Art::Stamp(..)) => STAMP_TILT,
+        _ => 0.0,
+    }
+}
 
 /// The sticker called `name`, as the set has it, if there is one.
 pub fn sticker_named(name: &str) -> Option<&'static str> {
@@ -330,6 +338,11 @@ fn stamp_box(text: &str) -> Option<StampBox> {
     })
 }
 
+/// A noise seed of its own for each stamp's wear.
+fn seed(text: &str) -> f32 {
+    text.bytes().map(f32::from).sum()
+}
+
 /// Draw stamp `text` in `colour` at a font size of 100, its box at the
 /// origin: worn ink in a double border.
 fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
@@ -355,7 +368,7 @@ fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
     let at = ((b.w - b.text_w) / 2.0, (b.h + b.cap) / 2.0);
     canvas.draw_str(text, at, &b.font, &fill);
     // Wear: noise, cut to specks, takes ink out where it's high.
-    if let Some(noise) = shaders::fractal_noise((0.09, 0.09), 3, text.len() as f32, None) {
+    if let Some(noise) = shaders::fractal_noise((0.09, 0.09), 3, seed(text), None) {
         let mut wear = Paint::default();
         wear.set_shader(noise);
         wear.set_color_filter(color_filters::matrix_row_major(
@@ -395,49 +408,43 @@ pub fn sticker_image(name: &'static str) -> Option<Image> {
 /// Draw sticker `name` as big as fits in `rect`, centred, through `paint`
 /// (a shadow, say).
 pub fn draw_sticker(canvas: &Canvas, name: &'static str, rect: Rect, paint: &Paint) {
-    let Some(art) = art_of(name) else {
-        return;
-    };
-    if let Art::Emoji(_) = art {
-        if let Some(img) = sticker_image(name) {
-            canvas.draw_image_rect_with_sampling_options(
-                &img,
-                None,
-                rect,
-                SamplingOptions::from(CubicResampler::mitchell()),
-                paint,
-            );
+    // Shapes are drawn in their own units, scaled to fit.
+    let fit = |view: Rect, draw: &dyn Fn(&Canvas)| {
+        let k = (rect.width() / view.width()).min(rect.height() / view.height());
+        if !(k.is_finite() && k > 0.0) {
+            return;
         }
-        return;
-    }
-    let view = match art {
-        Art::Stamp(text, _) => match stamp_box(text) {
-            Some(b) => Rect::from_wh(b.w, b.h),
-            None => return,
-        },
-        Art::Pointer(p) => p.view(),
-        Art::Emoji(_) => unreachable!("drawn above"),
+        canvas.save_layer(&skia_safe::canvas::SaveLayerRec::default().paint(paint));
+        canvas.translate((
+            rect.center_x() - view.center_x() * k,
+            rect.center_y() - view.center_y() * k,
+        ));
+        canvas.scale((k, k));
+        draw(canvas);
+        canvas.restore();
     };
-    let k = (rect.width() / view.width()).min(rect.height() / view.height());
-    if !(k.is_finite() && k > 0.0) {
-        return;
-    }
-    canvas.save_layer(&skia_safe::canvas::SaveLayerRec::default().paint(paint));
-    canvas.translate((
-        rect.center_x() - view.center_x() * k,
-        rect.center_y() - view.center_y() * k,
-    ));
-    canvas.scale((k, k));
-    match art {
-        Art::Stamp(text, colour) => {
-            if let Some(b) = stamp_box(text) {
-                draw_stamp(canvas, &b, text, colour);
+    match art_of(name) {
+        Some(Art::Emoji(_)) => {
+            if let Some(img) = sticker_image(name) {
+                canvas.draw_image_rect_with_sampling_options(
+                    &img,
+                    None,
+                    rect,
+                    SamplingOptions::from(CubicResampler::mitchell()),
+                    paint,
+                );
             }
         }
-        Art::Pointer(p) => p.draw(canvas),
-        Art::Emoji(_) => {}
+        Some(Art::Stamp(text, colour)) => {
+            if let Some(b) = stamp_box(text) {
+                fit(Rect::from_wh(b.w, b.h), &|c| {
+                    draw_stamp(c, &b, text, colour)
+                });
+            }
+        }
+        Some(Art::Pointer(p)) => fit(p.view(), &|c| p.draw(c)),
+        None => {}
     }
-    canvas.restore();
 }
 
 /// A sticker stamped on the capture: any size, turned about its middle.

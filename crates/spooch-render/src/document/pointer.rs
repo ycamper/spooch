@@ -505,15 +505,10 @@ impl Document {
                     let y = if d2.y < 0.0 { d.from.y - h } else { d.from.y };
                     Rect::from_xywh(x, y, w, h)
                 };
-                let stamp = matches!(crate::sticker::art_of(name), Some(crate::Art::Stamp(..)));
                 Some(Mark::Sticker(crate::Sticker {
                     rect,
                     name,
-                    angle: if stamp {
-                        crate::sticker::STAMP_TILT
-                    } else {
-                        0.0
-                    },
+                    angle: crate::sticker::placed_angle(name),
                 }))
             }
             // A step goes where the press was, whether or not it moved.

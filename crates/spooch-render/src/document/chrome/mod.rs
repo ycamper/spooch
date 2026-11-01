@@ -66,6 +66,13 @@ const STICKER_CELL: f32 = 40.0;
 const STICKER_COLUMNS: usize = 9;
 /// The grid's tabs.
 const STICKER_TAB_H: f32 = 28.0;
+/// Between the saved looks.
+const QUICK_GAP: f32 = 4.0;
+/// The move tab on the canvas's bottom edge.
+const TAB_W: f32 = 40.0;
+const TAB_H: f32 = 12.0;
+const TIP_H: f32 = 22.0;
+const TIP_FONT: f32 = 12.0;
 
 /// The open sticker grid.
 pub(super) struct StickerGrid {
@@ -94,13 +101,6 @@ fn sticker_spots(tab: usize) -> (Vec<(usize, i32, i32, i32)>, i32) {
     }
     (spots, r + 1)
 }
-/// Between the saved looks.
-const QUICK_GAP: f32 = 4.0;
-/// The move tab on the canvas's bottom edge.
-const TAB_W: f32 = 40.0;
-const TAB_H: f32 = 12.0;
-const TIP_H: f32 = 22.0;
-const TIP_FONT: f32 = 12.0;
 
 /// A button on the chrome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
