@@ -1,6 +1,6 @@
-//! The output bar under the canvas: file name, format, frame, its colour
-//! and title, shadow, size, and Copy and Save. Copy and Save are handed to
-//! the shell as actions; everything else changes here.
+//! The output bar under the canvas: file name, format, frame (whose menu
+//! also sets the shadow and colour), title, size, then the actions. The
+//! actions are handed to the shell; everything else changes here.
 
 use crate::document::fill;
 use skia_safe::{Font, IRect, Paint, Point, RRect, Rect};
@@ -12,17 +12,18 @@ use super::theme::{
     draw_list, ellipsize, rounded_panel, swatch, tick_box,
 };
 
+/// `rect` lit as the entry in use.
+fn fill_rrect_at(canvas: &skia_safe::Canvas, rect: Rect, radius: f32) {
+    canvas.draw_rrect(RRect::new_rect_xy(rect, radius, radius), &fill(SELECTED));
+}
+
 /// Something on the bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarItem {
     Name,
     Format,
-    /// The frame round the output.
+    /// The frame round the output, and its menu.
     Frame,
-    /// The drop shadow round the output.
-    Shadow,
-    /// The window frame's colour, for frames with a window top.
-    FrameColour,
     /// The text the window frame shows; click to type it.
     FrameTitle,
     Size,
@@ -33,29 +34,20 @@ pub enum BarItem {
     Share,
 }
 
-/// A list that opens over a bar button.
+/// One choice in the Frame menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum BarMenu {
-    /// Every frame, over the Frame button.
-    Frame,
-    /// Every frame colour, over the colour swatch.
-    Colour,
+enum Entry {
+    Frame(super::Frame),
+    Shadow(u8),
+    Colour(u8),
+    /// "Use for every capture".
+    Pin,
 }
 
-impl BarMenu {
-    fn button(self) -> BarItem {
-        match self {
-            BarMenu::Frame => BarItem::Frame,
-            BarMenu::Colour => BarItem::FrameColour,
-        }
-    }
-
-    /// The index of the "Use for every capture" row, the Frame menu's
-    /// last; `None` in other menus.
-    fn pin_row(self) -> Option<usize> {
-        (self == BarMenu::Frame).then(|| super::Frame::all().len())
-    }
-}
+/// The shadows' names on the Frame menu's chips.
+const SHADOW_CHIPS: [&str; 5] = ["Auto", "None", "Soft", "Normal", "Deep"];
+/// The label before a row of chips.
+const CHIP_LABEL: f32 = 64.0;
 
 /// What a click on the bar asks the shell to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,16 +104,28 @@ fn wrap(widths: &[f32], room: f32, gap: f32) -> Vec<usize> {
 pub(super) struct BarLayout {
     pub rect: IRect,
     pub items: Vec<(BarItem, IRect, String)>,
+    /// The line before the actions, on the floating bar.
+    pub divider: Option<f32>,
 }
 
+/// The room the line before the actions takes.
+const SPLIT: f32 = 17.0;
+
 impl BarItem {
+    /// Whether it does something with the capture, rather than set how
+    /// it looks.
+    fn is_action(self) -> bool {
+        matches!(
+            self,
+            BarItem::Window | BarItem::Copy | BarItem::Save | BarItem::Share
+        )
+    }
+
     pub(super) fn clickable(self) -> bool {
         matches!(
             self,
             BarItem::Format
                 | BarItem::Frame
-                | BarItem::Shadow
-                | BarItem::FrameColour
                 | BarItem::FrameTitle
                 | BarItem::Window
                 | BarItem::Copy
@@ -134,9 +138,7 @@ impl BarItem {
     pub(super) fn tip(self) -> &'static str {
         match self {
             BarItem::Format => "Click to switch between PNG and JPEG",
-            BarItem::Frame => "Click to pick a frame; hold Alt to preview",
-            BarItem::Shadow => "Click to change the shadow; hold Alt to preview",
-            BarItem::FrameColour => "Click to pick the frame's colour",
+            BarItem::Frame => "Frame, shadow and colour; hold Alt to preview",
             BarItem::FrameTitle => "Click to type the frame's title; Enter when done",
             BarItem::Window => "Ctrl+E   open in the editor window",
             BarItem::Copy => "Enter or Ctrl+C",
@@ -204,8 +206,7 @@ impl Document {
                 format!("{}.{}", self.name, self.format.extension()),
             ),
             (BarItem::Format, self.format.name().to_string()),
-            (BarItem::Frame, self.frame().name().to_string()),
-            (BarItem::FrameColour, String::new()),
+            (BarItem::Frame, self.frame_chip()),
             (
                 BarItem::FrameTitle,
                 if self.frame_title().is_empty() && !self.editing_title() {
@@ -213,10 +214,6 @@ impl Document {
                 } else {
                     self.frame_title().to_string()
                 },
-            ),
-            (
-                BarItem::Shadow,
-                super::SHADOWS[usize::from(self.shadow())].0.to_string(),
             ),
             (
                 BarItem::Size,
@@ -234,14 +231,12 @@ impl Document {
             ),
         ]
         .into_iter()
-        // A colour for frames with a top or edges, a title for those with
-        // a top; Open only over the screen.
+        // A title for frames with a top; Open only over the screen.
         .filter(|(item, _)| match item {
-            BarItem::FrameColour => self.frame().has_colour(),
             BarItem::FrameTitle => self.frame().has_title(),
+            BarItem::Window => !self.in_window(),
             _ => true,
         })
-        .filter(|(item, _)| *item != BarItem::Window || !self.in_window())
         .collect();
         let mut texts = texts;
         let mut widths: Vec<f32> = texts
@@ -251,12 +246,10 @@ impl Document {
                 match item {
                     // Room for the chevron.
                     BarItem::Format | BarItem::Frame => t + 30.0 * s,
-                    BarItem::FrameColour => 24.0 * s,
                     BarItem::FrameTitle => (t + 20.0 * s).clamp(70.0 * s, 220.0 * s),
                     BarItem::Name => (t + 20.0 * s).max(160.0 * s),
                     // A pixel spare, so rounding doesn't cut it short.
                     BarItem::Size => t + 14.0 * s,
-                    BarItem::Shadow => t + 20.0 * s,
                     _ => t + 22.0 * s,
                 }
             })
@@ -302,7 +295,18 @@ impl Document {
                 inner(&ws)
             })
             .fold(0.0, f32::max);
-        let w = (widest + 2.0 * PAD * s).ceil() as i32;
+        // On one line, the actions stand apart from the look: at the
+        // window footer's end, or after a line on the floating bar.
+        let split = (n == 1)
+            .then(|| texts.iter().position(|(item, _)| item.is_action()))
+            .flatten()
+            .filter(|&i| i > 0);
+        let split_w = if split.is_some() && docked.is_none() {
+            (SPLIT - GAP) * s
+        } else {
+            0.0
+        };
+        let w = (widest + split_w + 2.0 * PAD * s).ceil() as i32;
         let h = lines_h(n);
         let (x, y) = match docked {
             Some(f) => (f.left, f.top + (f.height() - one) / 2),
@@ -316,9 +320,20 @@ impl Document {
         let mut items = Vec::with_capacity(texts.len());
         let mut left = x as f32 + PAD * s;
         let item_h = (ITEM_H * s).round() as i32;
+        // The actions' width, so the docked footer can put them at its end.
+        let actions_w = split.map_or(0.0, |i| inner(&widths[i..]));
+        let mut divider = None;
         for (i, ((item, text), width)) in texts.into_iter().zip(widths).enumerate() {
             if i > 0 && lines[i] != lines[i - 1] {
                 left = x as f32 + PAD * s;
+            }
+            if Some(i) == split {
+                if docked.is_some() {
+                    left = left.max(rect.right as f32 - PAD * s - actions_w);
+                } else {
+                    left += split_w;
+                    divider = Some((left - (split_w + GAP * s) / 2.0).round());
+                }
             }
             let top = y as f32 + (PAD + lines[i] as f32 * (ITEM_H + GAP)) * s;
             let r = IRect::from_xywh(
@@ -330,7 +345,11 @@ impl Document {
             items.push((item, r, text));
             left += width + GAP * s;
         }
-        BarLayout { rect, items }
+        BarLayout {
+            rect,
+            items,
+            divider,
+        }
     }
 
     /// The rows a bar `h` tall takes over the screen: below the canvas,
@@ -347,27 +366,103 @@ impl Document {
         (y, y + h)
     }
 
-    /// The open bar menu, over its button: the list and each row.
-    pub(super) fn bar_menu_layout(&self, bar: &BarLayout) -> Option<(BarMenu, IRect, Vec<IRect>)> {
-        let menu = self.bar_menu?;
+    /// The Frame button's text: the frame, and the shadow unless it's
+    /// automatic.
+    fn frame_chip(&self) -> String {
+        let frame = self.frame().name();
+        match self.shadow() {
+            0 => frame.to_string(),
+            i => format!("{frame} \u{b7} {}", super::SHADOWS[usize::from(i)].0),
+        }
+    }
+
+    /// What the Frame menu offers, in order: the frames, the shadows, the
+    /// colours for frames that take one, and the pin.
+    fn entries(&self) -> Vec<Entry> {
+        let frames = super::Frame::all()
+            .into_iter()
+            .map(|(f, _)| Entry::Frame(f));
+        let shadows = (0..super::SHADOWS.len() as u8).map(Entry::Shadow);
+        let colours = (0..super::FRAME_COLOURS.len() as u8)
+            .map(Entry::Colour)
+            .filter(|_| self.frame().has_colour());
+        frames
+            .chain(shadows)
+            .chain(colours)
+            .chain([Entry::Pin])
+            .collect()
+    }
+
+    /// Whether `e` is in use now.
+    fn in_use(&self, e: Entry) -> bool {
+        match e {
+            Entry::Frame(f) => f == self.frame(),
+            Entry::Shadow(i) => i == self.shadow(),
+            Entry::Colour(i) => i == self.frame_colour(),
+            Entry::Pin => self.look_pinned(),
+        }
+    }
+
+    /// Whether `e` is a chip in a row of them rather than a row of its
+    /// own: the shadows and colours.
+    fn is_chip(e: Entry) -> bool {
+        matches!(e, Entry::Shadow(_) | Entry::Colour(_))
+    }
+
+    /// `e`'s name, as its row or chip shows it.
+    fn entry_name(e: Entry) -> String {
+        match e {
+            Entry::Frame(f) => f.name().to_string(),
+            Entry::Shadow(i) => SHADOW_CHIPS[usize::from(i)].to_string(),
+            Entry::Colour(i) => super::FRAME_COLOURS[usize::from(i)].0.to_string(),
+            Entry::Pin => PIN.to_string(),
+        }
+    }
+
+    /// The open Frame menu, over its button: the list and each entry's
+    /// place. Rows stack; a section of chips shares one row after its
+    /// label.
+    pub(super) fn frame_menu_layout(&self, bar: &BarLayout) -> Option<(IRect, Vec<IRect>)> {
+        if !self.frame_menu {
+            return None;
+        }
         let s = self.scale;
-        let (_, button, _) = bar.items.iter().find(|(i, ..)| *i == menu.button())?;
+        let (_, button, _) = bar.items.iter().find(|(i, ..)| *i == BarItem::Frame)?;
         let font = self.bar_font();
-        let names = self.menu_names(menu);
-        let pin = menu.pin_row();
-        let w = names
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                let marked = menu == BarMenu::Colour || pin == Some(i);
-                self.text_width(font.as_ref(), name) + if marked { ROW_MARK * s } else { 0.0 }
-            })
-            .fold(0.0f32, f32::max);
-        let w = ((w + 28.0 * s).ceil() as i32).max(button.width());
+        let entries = self.entries();
         let row = (MENU_ROW * s).round() as i32;
         let pad = (4.0 * s).round() as i32;
-        let n = names.len() as i32;
-        let h = n * row + 2 * pad;
+        let chip_w = |e: Entry| match e {
+            Entry::Colour(_) => (22.0 * s).round() as i32,
+            _ => (self.text_width(font.as_ref(), &Self::entry_name(e)) + 16.0 * s).round() as i32,
+        };
+        // Each entry's left and width in the list (none for a whole row),
+        // and its line.
+        let mut places = Vec::with_capacity(entries.len());
+        let (mut line, mut x, mut widest) = (-1, 0, 0);
+        let mut prev = None;
+        for &e in &entries {
+            let kind = std::mem::discriminant(&e);
+            if Self::is_chip(e) {
+                if prev != Some(kind) {
+                    line += 1;
+                    x = pad + (CHIP_LABEL * s).round() as i32;
+                }
+                let w = chip_w(e);
+                places.push((x, Some(w), line));
+                x += w + (2.0 * s).round() as i32;
+                widest = widest.max(x + pad);
+            } else {
+                line += 1;
+                let t = self.text_width(font.as_ref(), &Self::entry_name(e))
+                    + if e == Entry::Pin { ROW_MARK * s } else { 0.0 };
+                widest = widest.max((t + 28.0 * s).ceil() as i32);
+                places.push((0, None, line));
+            }
+            prev = Some(kind);
+        }
+        let w = widest.max(button.width());
+        let h = (line + 1) * row + 2 * pad;
         let screen = self.screen();
         // Above the bar, or below it when there's no room.
         let gap = (6.0 * s).round() as i32;
@@ -378,115 +473,121 @@ impl Document {
         };
         let left = button.left.min(screen.right - w).max(screen.left);
         let list = IRect::from_xywh(left, top, w, h);
-        let rows = (0..n)
-            .map(|i| IRect::from_xywh(left, top + pad + i * row, w, row))
-            .collect();
-        Some((menu, list, rows))
-    }
-
-    /// Each row's name in `menu`.
-    fn menu_names(&self, menu: BarMenu) -> Vec<String> {
-        match menu {
-            BarMenu::Frame => super::Frame::all()
-                .into_iter()
-                .map(|(_, n)| n)
-                .chain([PIN.to_string()])
-                .collect(),
-            BarMenu::Colour => super::FRAME_COLOURS
-                .iter()
-                .map(|(n, _)| n.to_string())
-                .collect(),
-        }
-    }
-
-    /// The row of `menu` that's in use now.
-    fn menu_current(&self, menu: BarMenu) -> usize {
-        match menu {
-            BarMenu::Frame => super::Frame::all()
-                .iter()
-                .position(|(f, _)| *f == self.frame())
-                .unwrap_or(0),
-            BarMenu::Colour => usize::from(self.frame_colour()),
-        }
-    }
-
-    /// Pick row `i` of the open menu, and close it.
-    pub(super) fn pick_menu(&mut self, i: usize) {
-        match self.bar_menu {
-            Some(m) if m.pin_row() == Some(i) => self.toggle_pin(),
-            Some(BarMenu::Frame) => {
-                if let Some((f, _)) = super::Frame::all().get(i) {
-                    self.set_frame(*f);
+        let rects = places
+            .into_iter()
+            .map(|(x, cw, l)| {
+                let y = top + pad + l * row;
+                match cw {
+                    Some(cw) => IRect::from_xywh(left + x, y + pad / 2, cw, row - pad),
+                    None => IRect::from_xywh(left, y, w, row),
                 }
-            }
-            Some(BarMenu::Colour) => self.set_frame_colour(i as u8),
+            })
+            .collect();
+        Some((list, rects))
+    }
+
+    /// Pick entry `i` of the Frame menu, which stays open to set more.
+    pub(super) fn pick_menu(&mut self, i: usize) {
+        if !self.frame_menu {
+            return;
+        }
+        match self.entries().get(i) {
+            Some(Entry::Frame(f)) => self.set_frame(*f),
+            Some(Entry::Shadow(v)) => self.set_shadow(*v),
+            Some(Entry::Colour(v)) => self.set_frame_colour(*v),
+            Some(Entry::Pin) => self.toggle_pin(),
             None => {}
         }
-        self.close_bar_menu();
-    }
-
-    /// Open `menu`, or close it if it's open.
-    fn toggle_menu(&mut self, menu: BarMenu) {
-        self.bar_menu = if self.bar_menu == Some(menu) {
-            None
-        } else {
-            Some(menu)
-        };
         self.chrome_key = None;
     }
 
-    pub(super) fn close_bar_menu(&mut self) {
-        if self.bar_menu.is_some() {
-            self.bar_menu = None;
+    pub(super) fn close_frame_menu(&mut self) {
+        if self.frame_menu {
+            self.frame_menu = false;
             self.chrome_key = None;
         }
     }
 
-    /// The open menu's panel: each row's name (a colour's swatch first),
-    /// the one in use marked, and under the frames the pin's tick box.
-    pub(super) fn draw_bar_menu(
+    /// The Frame menu's panel: each entry's name, the ones in use lit,
+    /// and the pin's tick box under a line. A section of chips gets a line
+    /// above and its label.
+    pub(super) fn draw_frame_menu(
         &self,
-        menu: BarMenu,
         list: IRect,
         rows: &[IRect],
         hovered: Option<usize>,
     ) -> Panel {
         let s = self.scale;
         let font = self.bar_font();
-        let names = self.menu_names(menu);
-        let current = self.menu_current(menu);
-        let pin = menu.pin_row();
-        let pinned = self.look_pinned();
+        let entries = self.entries();
+        let origin_y = list.top as f32;
         panel(list, |canvas| {
-            draw_list(
-                canvas,
-                list,
-                rows,
-                Some(current),
-                hovered,
-                s,
-                |i, rect, in_use| {
-                    let mark = Point::new(rect.left + 17.0 * s, rect.center_y());
-                    let is_pin = pin == Some(i);
-                    if menu == BarMenu::Colour {
-                        swatch(canvas, mark, 7.0 * s, self.frame_colour_shown(i as u8), s);
-                    } else if is_pin {
-                        let y = rect.top + 0.5 * s;
-                        let line = super::theme::stroke(DIVIDER, s);
-                        canvas.draw_line((rect.left, y), (rect.right, y), &line);
-                        tick_box(canvas, mark, pinned, s);
+            let line = super::theme::stroke(DIVIDER, s);
+            let width = list.width() as f32;
+            let lit = |rect: Rect| fill_rrect_at(canvas, rect, 5.0 * s);
+            draw_list(canvas, list, rows, None, hovered, s, |i, rect, _| {
+                let Some(&e) = entries.get(i) else { return };
+                let on = self.in_use(e);
+                let chip = Self::is_chip(e);
+                let starts = chip
+                    && (i == 0
+                        || std::mem::discriminant(&entries[i - 1]) != std::mem::discriminant(&e));
+                if e == Entry::Pin || starts {
+                    let y = Rect::from(rows[i]).top - origin_y
+                        + if starts { -2.5 * s } else { 0.5 * s };
+                    canvas.draw_line((0.0, y), (width, y), &line);
+                }
+                if starts && let Some(font) = &font {
+                    let label = if matches!(e, Entry::Shadow(_)) {
+                        "Shadow"
+                    } else {
+                        "Colour"
+                    };
+                    let baseline = centred_baseline(font, rect.center_y());
+                    canvas.draw_str(label, (10.0 * s, baseline), font, &fill(MUTED));
+                }
+                if on && e != Entry::Pin {
+                    lit(rect);
+                }
+                let p = fill(if on { TEXT } else { MUTED });
+                match e {
+                    Entry::Colour(c) if chip => {
+                        swatch(
+                            canvas,
+                            rect.center(),
+                            7.0 * s,
+                            self.frame_colour_shown(c),
+                            s,
+                        );
                     }
-                    let on = in_use || (is_pin && pinned);
-                    let marked = menu == BarMenu::Colour || is_pin;
-                    let indent = if marked { 10.0 + ROW_MARK } else { 10.0 };
-                    let text_x = rect.left + indent * s;
-                    if let (Some(font), Some(name)) = (&font, names.get(i)) {
-                        let p = fill(if on { TEXT } else { MUTED });
-                        let baseline = centred_baseline(font, rect.center_y());
-                        canvas.draw_str(name, (text_x, baseline), font, &p);
+                    _ if chip => {
+                        if let Some(font) = &font {
+                            let name = Self::entry_name(e);
+                            let tw = self.text_width(Some(font), &name);
+                            let baseline = centred_baseline(font, rect.center_y());
+                            canvas.draw_str(
+                                &name,
+                                (rect.center_x() - tw / 2.0, baseline),
+                                font,
+                                &p,
+                            );
+                        }
                     }
-                },
-            );
+                    _ => {
+                        let pin = e == Entry::Pin;
+                        if pin {
+                            let mark = Point::new(rect.left + 17.0 * s, rect.center_y());
+                            tick_box(canvas, mark, on, s);
+                        }
+                        let indent = if pin { 10.0 + ROW_MARK } else { 10.0 };
+                        if let Some(font) = &font {
+                            let baseline = centred_baseline(font, rect.center_y());
+                            let name = Self::entry_name(e);
+                            canvas.draw_str(&name, (rect.left + indent * s, baseline), font, &p);
+                        }
+                    }
+                }
+            });
         })
     }
 
@@ -511,9 +612,10 @@ impl Document {
                 self.format = self.format.next();
                 self.chrome_key = None;
             }
-            BarItem::Frame => self.toggle_menu(BarMenu::Frame),
-            BarItem::Shadow => self.set_shadow(self.shadow() + 1),
-            BarItem::FrameColour => self.toggle_menu(BarMenu::Colour),
+            BarItem::Frame => {
+                self.frame_menu = !self.frame_menu;
+                self.chrome_key = None;
+            }
             BarItem::FrameTitle => self.set_editing_title(!self.editing_title()),
             BarItem::Window => self.action = Some(Action::OpenWindow),
             BarItem::Copy => self.action = Some(Action::Copy),
@@ -536,6 +638,12 @@ impl Document {
                 s,
             );
             let origin = Point::new(r.left as f32, r.top as f32);
+            if let Some(x) = layout.divider {
+                let x = x - origin.x;
+                let line = super::theme::stroke(super::theme::OUTLINE, s);
+                let (top, bottom) = (PAD + 4.0, r.height() as f32 / s - PAD - 4.0);
+                canvas.draw_line((x, top * s), (x, bottom * s), &line);
+            }
             for (item, ir, text) in &layout.items {
                 let rect = Rect::from(*ir).with_offset(-origin);
                 let hover = hovered == Some(*item);
@@ -574,10 +682,6 @@ impl Document {
                     let mut p = Paint::new(TEXT, None);
                     p.set_stroke_width(1.5 * s);
                     canvas.draw_line((x, rect.top + 5.0 * s), (x, rect.bottom - 5.0 * s), &p);
-                }
-                if *item == BarItem::FrameColour {
-                    // A dot in the frame's colour.
-                    swatch(canvas, rect.center(), 6.5 * s, self.frame_top_colour(), s);
                 }
                 if matches!(item, BarItem::Format | BarItem::Frame) {
                     // A small chevron after the name.
@@ -645,21 +749,25 @@ mod tests {
         d.set_name("Spooch 2026-10-04 at 10.30.00");
         let b = d.bar_layout();
         assert!(b.rect.top >= 200 + 8, "{:?}", b.rect);
-        assert_eq!(b.items.len(), 9, "no frame colour without a window frame");
+        assert_eq!(b.items.len(), 8, "no title without a window frame");
         let (_, _, name) = &b.items[0];
         assert_eq!(name, "Spooch 2026-10-04 at 10.30.00.png");
         let (_, _, frame) = &b.items[2];
         assert_eq!(frame, "No frame");
-        let (_, _, shadow) = &b.items[3];
-        assert_eq!(shadow, "Auto shadow");
-        let (_, _, size) = &b.items[4];
+        let (_, _, size) = &b.items[3];
         assert_eq!(size, "200 \u{00d7} 100");
-        // A window frame adds its colour swatch.
+        // A window frame adds its title box, and the frame names a shadow
+        // other than Auto.
         d.set_frame(super::super::Frame::builtin("terminal-modern"));
+        d.set_shadow(2);
         let b = d.bar_layout();
-        assert_eq!(b.items.len(), 11, "plus its colour and title");
-        assert_eq!(b.items[3].0, BarItem::FrameColour);
-        assert_eq!(b.items[4].0, BarItem::FrameTitle);
+        assert_eq!(b.items.len(), 9);
+        assert_eq!(b.items[2].2, "Terminal (modern) \u{b7} Soft shadow");
+        assert_eq!(b.items[3].0, BarItem::FrameTitle);
+        // On one line, a line sets the actions apart.
+        let open = item(&d, BarItem::Window);
+        let line = b.divider.expect("a line before the actions");
+        assert!(line > item(&d, BarItem::Size).right as f32 && line < open.left as f32);
         // The panels: rail, style row, bar, tab.
         assert_eq!(d.chrome().len(), 4);
     }
@@ -701,14 +809,15 @@ mod tests {
         let terminal = super::super::Frame::builtin("terminal-modern");
         d.set_frame(terminal);
         d.set_shadow(2);
-        // The pin is the row after the frames.
+        // The pin is the last entry.
         let pick = |d: &mut Document, row: usize| {
-            d.begin_drag(centre(item(d, BarItem::Frame)));
-            let (_, _, rows) = d.bar_menu_layout(&d.bar_layout()).unwrap();
-            assert_eq!(rows.len(), super::super::Frame::all().len() + 1);
+            if d.frame_menu_layout(&d.bar_layout()).is_none() {
+                d.begin_drag(centre(item(d, BarItem::Frame)));
+            }
+            let (_, rows) = d.frame_menu_layout(&d.bar_layout()).unwrap();
             d.begin_drag(centre(rows[row]));
         };
-        let pin = super::super::Frame::all().len();
+        let pin = d.entries().len() - 1;
         pick(&mut d, pin);
         assert!(d.look_pinned());
         // A different frame lasts for this capture only; the next starts
@@ -723,6 +832,29 @@ mod tests {
         assert!(!d.look_pinned());
         d.set_shadow(0);
         assert_eq!(d.styles().for_next_capture().framing.shadow, 0);
+    }
+
+    #[test]
+    fn the_frame_menu_sets_shadow_and_colour_and_stays_open() {
+        let (mut d, _) = placed();
+        d.set_screens(vec![IRect::from_ltrb(0, 0, 1000, 800)]);
+        d.set_frame(super::super::Frame::builtin("terminal-modern"));
+        d.begin_drag(centre(item(&d, BarItem::Frame)));
+        let entries = d.entries();
+        let (_, rows) = d.frame_menu_layout(&d.bar_layout()).unwrap();
+        assert_eq!(rows.len(), entries.len());
+        let at = |e: Entry| entries.iter().position(|&x| x == e).unwrap();
+        d.begin_drag(centre(rows[at(Entry::Shadow(4))]));
+        assert_eq!(d.shadow(), 4);
+        d.begin_drag(centre(rows[at(Entry::Colour(3))]));
+        assert_eq!(d.frame_colour(), 3);
+        assert!(d.frame_menu_layout(&d.bar_layout()).is_some(), "still open");
+        // Chips share a row; a press anywhere else closes the menu.
+        let (shadow, colour) = (rows[at(Entry::Shadow(0))], rows[at(Entry::Colour(0))]);
+        assert_eq!(shadow.top, rows[at(Entry::Shadow(4))].top);
+        assert!(colour.top > shadow.top);
+        d.begin_drag(Point::new(150.0, 150.0));
+        assert!(d.frame_menu_layout(&d.bar_layout()).is_none());
     }
 
     #[test]

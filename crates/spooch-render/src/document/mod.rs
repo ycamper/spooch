@@ -431,8 +431,8 @@ pub struct Document {
     /// The window frames' title, and whether it's being typed.
     frame_title: String,
     editing_title: bool,
-    /// The bar's open list (frames or frame colours), if one is.
-    bar_menu: Option<bar::BarMenu>,
+    /// Whether the Frame menu is open.
+    frame_menu: bool,
     /// The chrome as last drawn, and what it was drawn from.
     chrome_key: Option<chrome::ChromeKey>,
     chrome_panels: Vec<Panel>,
@@ -526,7 +526,7 @@ impl Document {
             preview: false,
             frame_title: frame::last_title(),
             editing_title: false,
-            bar_menu: None,
+            frame_menu: false,
             typeface: Label::typeface(),
             ui_typeface: Label::ui_typeface(),
             surface,
