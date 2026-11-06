@@ -1,9 +1,9 @@
-//! Rage-comic-style faces, over the top: thick black lines on a head about
-//! 100 by 110, with the tears, steam and sparkles round it.
+//! Rage-comic-style faces, as dumb as possible: shaky black lines on a
+//! lumpy head about 100 by 110, with the tears, steam and sparkles round it.
 
 use skia_safe::{
     BlurStyle, Canvas, Color4f, MaskFilter, Paint, PaintCap, PaintJoin, PaintStyle, Path,
-    PathBuilder, PathOp, Point, RRect, Rect,
+    PathBuilder, PathEffect, PathOp, Point, RRect, Rect,
 };
 
 /// The faces there are stickers of.
@@ -14,16 +14,20 @@ pub enum Face {
     Sob,
     MindBlown,
     JawDrop,
+    Duh,
     HeartEyes,
     Cringe,
     Evil,
     Sweating,
+    Thinking,
     DeadInside,
     Bruh,
     Smug,
+    Suspicious,
     Cool,
     Derp,
     Bleh,
+    Melting,
 }
 
 type Pt = (f32, f32);
@@ -43,6 +47,7 @@ const GREEN: Color4f = rgb(0.7, 0.87, 0.45);
 const PALE: Color4f = rgb(0.8, 0.84, 0.9);
 const ORANGE: Color4f = rgb(1.0, 0.55, 0.1);
 const YELLOW: Color4f = rgb(1.0, 0.86, 0.2);
+const SMOKE: Color4f = rgb(0.84, 0.84, 0.88);
 
 /// The head, a lumpy oval, going round from the top.
 const HEAD: [Pt; 12] = [
@@ -60,23 +65,49 @@ const HEAD: [Pt; 12] = [
     (25.0, 9.0),
 ];
 
-/// The head, its lower half `stretch` times as long.
-fn head(stretch: f32) -> Path {
-    let points: Vec<Pt> = HEAD
-        .iter()
-        .map(|&(x, y)| {
-            (
-                x,
-                if y > 50.0 {
-                    50.0 + (y - 50.0) * stretch
-                } else {
-                    y
-                },
-            )
-        })
-        .collect();
-    curve(&points, true)
-}
+/// A head with an enormous chin.
+const CHIN: [Pt; 12] = [
+    (50.0, 4.0),
+    (76.0, 9.0),
+    (92.0, 30.0),
+    (95.0, 56.0),
+    (91.0, 86.0),
+    (80.0, 110.0),
+    (50.0, 126.0),
+    (20.0, 110.0),
+    (9.0, 86.0),
+    (5.0, 54.0),
+    (9.0, 28.0),
+    (25.0, 9.0),
+];
+
+/// A head melting off its bottom.
+const MELT: [Pt; 24] = [
+    (50.0, 4.0),
+    (76.0, 9.0),
+    (92.0, 30.0),
+    (95.0, 56.0),
+    (93.0, 78.0),
+    (90.0, 96.0),
+    (85.0, 100.0),
+    (81.0, 88.0),
+    (75.0, 94.0),
+    (70.0, 116.0),
+    (64.0, 120.0),
+    (60.0, 102.0),
+    (52.0, 104.0),
+    (47.0, 126.0),
+    (41.0, 128.0),
+    (37.0, 106.0),
+    (29.0, 102.0),
+    (23.0, 114.0),
+    (17.0, 112.0),
+    (13.0, 92.0),
+    (7.0, 76.0),
+    (5.0, 54.0),
+    (9.0, 28.0),
+    (25.0, 9.0),
+];
 
 /// A smooth curve through `points`, closed back to the first if `closed`.
 fn curve(points: &[Pt], closed: bool) -> Path {
@@ -119,14 +150,24 @@ fn pen(colour: Color4f, width: f32) -> Paint {
     p
 }
 
+/// A black line drawn by a shaky hand with a mouse.
 fn ink(width: f32) -> Paint {
-    pen(BLACK, width)
+    let mut p = pen(BLACK, width);
+    if let (Some(shake), Some(round)) = (
+        PathEffect::discrete(5.0, 0.9, 7),
+        PathEffect::corner_path(2.5),
+    ) {
+        p.set_path_effect(PathEffect::compose(round, shake));
+    }
+    p
 }
 
-/// Fill `path` in `colour` and outline it.
+/// Fill `path` in `colour` and outline it; small shapes with a steady
+/// hand, so they keep their shape.
 fn shape(c: &Canvas, path: &Path, colour: Color4f) {
     c.draw_path(path, &fill(colour));
-    c.draw_path(path, &ink(3.2));
+    let small = path.bounds().width().max(path.bounds().height()) < 30.0;
+    c.draw_path(path, &if small { pen(BLACK, 3.2) } else { ink(3.2) });
 }
 
 fn line(c: &Canvas, points: &[Pt], width: f32) {
@@ -152,6 +193,14 @@ fn lidded(c: &Canvas, x: f32, y: f32, p: f32) {
     c.draw_arc(lower, 0.0, 180.0, false, &ink(3.0));
     c.draw_circle((x + p, y + 4.5), 4.0, &fill(BLACK));
     line(c, &[(x - 12.0, y), (x + 12.0, y)], 5.0);
+}
+
+/// Two big nostrils at height `y`.
+fn nostrils(c: &Canvas, y: f32, size: f32) {
+    for x in [44.0, 56.0] {
+        let r = Rect::from_xywh(x - size * 0.6, y - size * 0.45, size * 1.2, size * 0.9);
+        c.draw_oval(r, &fill(BLACK));
+    }
 }
 
 /// A drop, its point up, its round end at `at`.
@@ -214,13 +263,13 @@ fn sparkle(c: &Canvas, at: Pt, r: f32) {
     shape(c, &star(at, 4, r, r * 0.3), YELLOW);
 }
 
-/// A cloud of steam from `circles`.
-fn puff(c: &Canvas, circles: &[(Pt, f32)]) {
+/// A cloud from `circles`, in `colour`.
+fn puff(c: &Canvas, circles: &[(Pt, f32)], colour: Color4f) {
     let cloud = circles.iter().fold(Path::new(), |acc, &(at, r)| {
         acc.op(&Path::circle(at, r, None), PathOp::Union)
             .unwrap_or(acc)
     });
-    shape(c, &cloud, WHITE);
+    shape(c, &cloud, colour);
 }
 
 /// A spiral filling the circle of radius `r` at `at`.
@@ -236,6 +285,35 @@ fn spiral(c: &Canvas, at: Pt, r: f32) {
     line(c, &points, 2.5);
 }
 
+/// A pink brain of radius `r` at `at`.
+fn brain(c: &Canvas, at: Pt, r: f32) {
+    let (x, y) = at;
+    let lumps = [1.0, 0.86, 1.0, 0.9, 1.0, 0.84, 1.0, 0.9];
+    let outline: Vec<Pt> = lumps
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let a = std::f32::consts::TAU * i as f32 / lumps.len() as f32;
+            (x + 1.25 * r * k * a.cos(), y + r * k * a.sin())
+        })
+        .collect();
+    shape(c, &curve(&outline, true), rgb(1.0, 0.7, 0.78));
+    line(c, &[(x, y - r * 0.9), (x, y + r * 0.9)], 2.0);
+    for s in [-1.0, 1.0] {
+        let k = r * 0.55;
+        line(
+            c,
+            &[
+                (x + s * k * 0.3, y - k),
+                (x + s * k, y - k * 0.6),
+                (x + s * k * 0.5, y),
+                (x + s * k * 1.2, y + k * 0.5),
+            ],
+            2.0,
+        );
+    }
+}
+
 /// Draw `inside` clipped to `path`.
 fn within<T>(c: &Canvas, path: &Path, inside: impl FnOnce() -> T) {
     c.save();
@@ -244,24 +322,38 @@ fn within<T>(c: &Canvas, path: &Path, inside: impl FnOnce() -> T) {
     c.restore();
 }
 
-/// A row of `count` teeth across `band`, clipped to the mouth; the top row
-/// if `top`.
-fn teeth(c: &Canvas, mouth: &Path, band: Rect, count: usize, top: bool) {
+/// A row of `count` uneven teeth across `band`, clipped to the mouth: the
+/// top row if `top`, and tooth `gap` knocked out.
+fn teeth(c: &Canvas, mouth: &Path, band: Rect, count: usize, top: bool, gap: Option<usize>) {
+    let jitter = [0.0, 0.18, -0.12, 0.22, -0.08];
+    let edges: Vec<f32> = (0..=count)
+        .map(|i| {
+            let j = if i == 0 || i == count {
+                0.0
+            } else {
+                jitter[i % jitter.len()]
+            };
+            band.left + band.width() * (i as f32 + j) / count as f32
+        })
+        .collect();
     within(c, mouth, || {
         c.draw_rect(band, &fill(WHITE));
         let edge = ink(2.0);
+        if let Some(g) = gap {
+            let hole = Rect::from_ltrb(edges[g], band.top, edges[g + 1], band.bottom);
+            c.draw_rect(hole, &fill(BLACK));
+        }
         let y = if top { band.bottom } else { band.top };
         c.draw_line((band.left, y), (band.right, y), &edge);
-        for i in 1..count {
-            let x = band.left + band.width() * i as f32 / count as f32;
-            c.draw_line((x, band.top), (x, band.bottom), &edge);
+        for x in &edges[1..count] {
+            c.draw_line((*x, band.top), (*x, band.bottom), &edge);
         }
     });
 }
 
 /// A wide-open mouth: black, top teeth down to `teeth_to`, a tongue in
 /// the oval `tongue`.
-fn yell(c: &Canvas, outline: &[Pt], teeth_to: f32, tongue: Rect) {
+fn yell(c: &Canvas, outline: &[Pt], teeth_to: f32, tongue: Rect, gap: Option<usize>) {
     let mouth = curve(outline, true);
     c.draw_path(&mouth, &fill(BLACK));
     within(c, &mouth, || c.draw_oval(tongue, &fill(TONGUE)));
@@ -271,8 +363,25 @@ fn yell(c: &Canvas, outline: &[Pt], teeth_to: f32, tongue: Rect) {
         Rect::from_ltrb(0.0, 40.0, 100.0, teeth_to),
         6,
         true,
+        gap,
     );
     c.draw_path(&mouth, &ink(3.2));
+}
+
+/// Two big front teeth hanging from `y`.
+fn buck_teeth(c: &Canvas, y: f32, long: f32) {
+    for (l, r) in [(41.5, 49.5), (50.5, 58.5)] {
+        let tooth = RRect::new_rect_radii(
+            Rect::from_ltrb(l, y, r, y + long),
+            &[
+                (0.0, 0.0).into(),
+                (0.0, 0.0).into(),
+                (2.5, 2.5).into(),
+                (2.5, 2.5).into(),
+            ],
+        );
+        shape(c, &Path::rrect(tooth, None), WHITE);
+    }
 }
 
 /// The mirror image of `points` across the face's middle.
@@ -294,16 +403,20 @@ impl Face {
             Face::Sob => "Sobbing",
             Face::MindBlown => "Mind blown",
             Face::JawDrop => "Jaw drop",
+            Face::Duh => "Duh",
             Face::HeartEyes => "Heart eyes",
             Face::Cringe => "Cringe",
             Face::Evil => "Evil grin",
             Face::Sweating => "Nervous sweating",
+            Face::Thinking => "Thinking really hard",
             Face::DeadInside => "Dead inside",
             Face::Bruh => "Bruh",
             Face::Smug => "Smug",
+            Face::Suspicious => "Suspicious",
             Face::Cool => "Cool shades",
             Face::Derp => "Derp",
             Face::Bleh => "Bleh",
+            Face::Melting => "Melting",
         }
     }
 
@@ -313,17 +426,43 @@ impl Face {
             Face::Fury => (-8.0, -18.0, 108.0, 108.0),
             Face::Lol => (-20.0, -6.0, 120.0, 112.0),
             Face::Sob => (-16.0, 1.0, 116.0, 110.0),
-            Face::MindBlown => (-6.0, -42.0, 106.0, 108.0),
+            Face::MindBlown => (-6.0, -42.0, 110.0, 108.0),
             Face::JawDrop => (2.0, -16.0, 98.0, 150.0),
             Face::HeartEyes => (-2.0, -18.0, 102.0, 110.0),
             Face::Cringe => (-16.0, 1.0, 116.0, 108.0),
             Face::Sweating => (-2.0, -4.0, 104.0, 108.0),
+            Face::Thinking => (2.0, -32.0, 102.0, 108.0),
             Face::DeadInside => (2.0, -40.0, 98.0, 108.0),
-            Face::Smug => (-2.0, -2.0, 104.0, 108.0),
+            Face::Smug => (-2.0, -2.0, 104.0, 129.0),
             Face::Bleh => (2.0, 1.0, 98.0, 121.0),
+            Face::Melting => (2.0, 1.0, 98.0, 131.0),
             _ => (2.0, 1.0, 98.0, 108.0),
         };
         Rect::from_ltrb(l, t, r, b)
+    }
+
+    fn head(self) -> Path {
+        match self {
+            Face::JawDrop => {
+                let long: Vec<Pt> = HEAD
+                    .iter()
+                    .map(|&(x, y)| {
+                        (
+                            x,
+                            if y > 50.0 {
+                                50.0 + (y - 50.0) * 1.75
+                            } else {
+                                y
+                            },
+                        )
+                    })
+                    .collect();
+                curve(&long, true)
+            }
+            Face::Smug => curve(&CHIN, true),
+            Face::Melting => curve(&MELT, true),
+            _ => curve(&HEAD, true),
+        }
     }
 
     pub(super) fn draw(self, c: &Canvas) {
@@ -333,7 +472,7 @@ impl Face {
             Face::Bleh => GREEN,
             _ => WHITE,
         };
-        let face = head(if self == Face::JawDrop { 1.75 } else { 1.0 });
+        let face = self.head();
         // What goes behind the head.
         match self {
             Face::Fury => {
@@ -343,8 +482,20 @@ impl Face {
                     ((15.0, -8.0), 7.0),
                     ((5.0, -13.0), 6.5),
                 ];
-                puff(c, &left);
-                puff(c, &left.map(|((x, y), r)| ((100.0 - x, y), r)));
+                puff(c, &left, WHITE);
+                puff(c, &left.map(|((x, y), r)| ((100.0 - x, y), r)), WHITE);
+            }
+            Face::Thinking => {
+                puff(
+                    c,
+                    &[
+                        ((78.0, 4.0), 7.0),
+                        ((87.0, -6.0), 9.0),
+                        ((79.0, -17.0), 7.0),
+                        ((90.0, -23.0), 6.0),
+                    ],
+                    SMOKE,
+                );
             }
             Face::HeartEyes => {
                 heart(c, (90.0, 2.0), 13.0, RED);
@@ -378,16 +529,20 @@ impl Face {
             Face::Sob => sob(c),
             Face::MindBlown => mind_blown(c),
             Face::JawDrop => jaw_drop(c),
+            Face::Duh => duh(c),
             Face::HeartEyes => heart_eyes(c),
             Face::Cringe => cringe(c),
             Face::Evil => evil(c, &face),
             Face::Sweating => sweating(c),
+            Face::Thinking => thinking(c),
             Face::DeadInside => dead_inside(c),
             Face::Bruh => bruh(c),
             Face::Smug => smug(c),
+            Face::Suspicious => suspicious(c),
             Face::Cool => cool(c),
             Face::Derp => derp(c),
             Face::Bleh => bleh(c),
+            Face::Melting => melting(c),
         }
         if self == Face::Lol {
             c.restore();
@@ -412,14 +567,22 @@ fn fury(c: &Canvas) {
             &mark,
         );
     }
+    // Veins throbbing at the temples.
+    let vein = pen(DARK_RED, 2.6);
+    for points in [
+        vec![(12.0, 34.0), (16.0, 40.0), (11.0, 46.0), (15.0, 52.0)],
+        mirror(&[(12.0, 34.0), (16.0, 40.0), (11.0, 46.0), (15.0, 52.0)]),
+    ] {
+        c.draw_path(&curve(&points, false), &vein);
+    }
     // Glaring eyes under brows pulled down hard.
     let left = [(21.0, 39.0), (45.0, 49.0), (41.0, 56.0), (27.0, 55.0)];
     for (points, x) in [(left.to_vec(), 35.0), (mirror(&left), 65.0)] {
         shape(c, &curve(&points, true), WHITE);
-        c.draw_circle((x, 51.5), 2.6, &fill(BLACK));
+        c.draw_circle((x, 51.5), 1.8, &fill(BLACK));
     }
     pair(c, &[(13.0, 29.0), (48.0, 44.0)], 7.0);
-    // A roar: the corners pulled down, the teeth bared.
+    // A roar: the corners pulled down, the teeth bared, one knocked out.
     let mouth = curve(
         &[
             (20.0, 72.0),
@@ -435,13 +598,21 @@ fn fury(c: &Canvas) {
     within(c, &mouth, || {
         c.draw_oval(Rect::from_ltrb(30.0, 82.0, 70.0, 110.0), &fill(DARK_RED))
     });
-    teeth(c, &mouth, Rect::from_ltrb(10.0, 50.0, 90.0, 72.0), 6, true);
+    teeth(
+        c,
+        &mouth,
+        Rect::from_ltrb(10.0, 50.0, 90.0, 72.0),
+        6,
+        true,
+        Some(2),
+    );
     teeth(
         c,
         &mouth,
         Rect::from_ltrb(10.0, 88.0, 90.0, 100.0),
         5,
         false,
+        None,
     );
     c.draw_path(&mouth, &ink(3.2));
 }
@@ -453,6 +624,7 @@ fn lol(c: &Canvas) {
     stream(c, &[(80.0, 40.0), (94.0, 34.0), (112.0, 37.0)], 7.0);
     drop(c, (-15.0, 47.0), 3.0);
     drop(c, (115.0, 47.0), 3.0);
+    nostrils(c, 47.0, 6.0);
     yell(
         c,
         &[
@@ -466,6 +638,7 @@ fn lol(c: &Canvas) {
         ],
         62.0,
         Rect::from_ltrb(26.0, 78.0, 74.0, 112.0),
+        Some(3),
     );
 }
 
@@ -492,16 +665,18 @@ fn sob(c: &Canvas) {
         ],
         70.0,
         Rect::from_ltrb(32.0, 84.0, 68.0, 108.0),
+        Some(2),
     );
     // A snot bubble.
-    c.draw_circle((55.0, 56.0), 7.0, &fill(Color4f::new(0.75, 0.92, 0.7, 0.6)));
-    c.draw_circle((55.0, 56.0), 7.0, &ink(1.8));
-    c.draw_circle((52.5, 53.5), 2.0, &fill(WHITE));
+    c.draw_circle((55.0, 55.0), 8.0, &fill(Color4f::new(0.75, 0.92, 0.7, 0.6)));
+    c.draw_circle((55.0, 55.0), 8.0, &ink(1.8));
+    c.draw_circle((52.0, 52.0), 2.2, &fill(WHITE));
 }
 
 fn mind_blown(c: &Canvas) {
     shape(c, &star((50.0, -2.0), 14, 42.0, 22.0), ORANGE);
     shape(c, &star((50.0, -2.0), 12, 26.0, 13.0), YELLOW);
+    brain(c, (86.0, -28.0), 14.0);
     for x in [31.0, 69.0] {
         shape(c, &Path::circle((x, 50.0), 13.0, None), WHITE);
         spiral(c, (x, 50.0), 11.0);
@@ -518,7 +693,8 @@ fn jaw_drop(c: &Canvas) {
     // The eyes pop out past the head.
     eye(c, (25.0, 38.0), 20.0, (0.0, 0.0), 2.5);
     eye(c, (75.0, 38.0), 20.0, (0.0, 0.0), 2.5);
-    let mouth = Path::oval(Rect::from_ltrb(36.0, 64.0, 64.0, 138.0), None);
+    nostrils(c, 61.0, 5.0);
+    let mouth = Path::oval(Rect::from_ltrb(36.0, 68.0, 64.0, 138.0), None);
     c.draw_path(&mouth, &fill(BLACK));
     within(c, &mouth, || {
         c.draw_oval(Rect::from_ltrb(38.0, 118.0, 62.0, 150.0), &fill(TONGUE))
@@ -526,12 +702,43 @@ fn jaw_drop(c: &Canvas) {
     c.draw_path(&mouth, &ink(3.2));
 }
 
+fn duh(c: &Canvas) {
+    line(
+        c,
+        &[
+            (16.0, 30.0),
+            (33.0, 24.0),
+            (50.0, 31.0),
+            (67.0, 24.0),
+            (84.0, 30.0),
+        ],
+        5.5,
+    );
+    eye(c, (32.0, 43.0), 10.0, (6.0, 1.0), 3.5);
+    eye(c, (68.0, 43.0), 10.0, (-6.0, 1.0), 3.5);
+    shape(c, &Path::circle((50.0, 60.0), 9.0, None), WHITE);
+    let mouth = curve(
+        &[
+            (28.0, 76.0),
+            (50.0, 80.0),
+            (72.0, 76.0),
+            (62.0, 84.0),
+            (38.0, 84.0),
+        ],
+        true,
+    );
+    shape(c, &mouth, BLACK);
+    buck_teeth(c, 78.0, 19.0);
+    stream(c, &[(31.0, 82.0), (29.0, 92.0), (30.0, 100.0)], 4.0);
+    drop(c, (30.0, 105.0), 3.0);
+}
+
 fn heart_eyes(c: &Canvas) {
-    c.draw_oval(Rect::from_ltrb(12.0, 58.0, 30.0, 68.0), &fill(BLUSH));
-    c.draw_oval(Rect::from_ltrb(70.0, 58.0, 88.0, 68.0), &fill(BLUSH));
-    for x in [32.0, 68.0] {
-        heart(c, (x, 45.0), 26.0, RED);
-        c.draw_circle((x - 6.0, 39.0), 2.5, &fill(WHITE));
+    c.draw_oval(Rect::from_ltrb(10.0, 58.0, 28.0, 68.0), &fill(BLUSH));
+    c.draw_oval(Rect::from_ltrb(72.0, 58.0, 90.0, 68.0), &fill(BLUSH));
+    for (x, s) in [(31.0, 30.0), (69.0, 21.0)] {
+        heart(c, (x, 45.0), s, RED);
+        c.draw_circle((x - s * 0.25, 39.0), 2.5, &fill(WHITE));
     }
     yell(
         c,
@@ -545,12 +752,40 @@ fn heart_eyes(c: &Canvas) {
         ],
         72.0,
         Rect::from_ltrb(36.0, 80.0, 64.0, 100.0),
+        None,
     );
-    stream(c, &[(68.0, 82.0), (70.0, 94.0), (70.0, 102.0)], 4.0);
-    drop(c, (70.0, 107.0), 3.0);
+    shape(
+        c,
+        &curve(
+            &[
+                (52.0, 84.0),
+                (66.0, 82.0),
+                (72.0, 96.0),
+                (64.0, 104.0),
+                (56.0, 96.0),
+            ],
+            true,
+        ),
+        TONGUE,
+    );
+    stream(c, &[(36.0, 86.0), (34.0, 96.0), (35.0, 103.0)], 4.0);
+    drop(c, (35.0, 107.0), 3.0);
 }
 
 fn cringe(c: &Canvas) {
+    for y in [12.0, 17.0, 22.0] {
+        line(
+            c,
+            &[
+                (38.0, y),
+                (44.0, y - 1.5),
+                (50.0, y),
+                (56.0, y - 1.5),
+                (62.0, y),
+            ],
+            2.0,
+        );
+    }
     pair(c, &[(18.0, 30.0), (42.0, 36.0)], 5.0);
     pair(c, &[(24.0, 40.0), (38.0, 46.0), (24.0, 52.0)], 5.0);
     let mouth = Path::rrect(
@@ -637,21 +872,22 @@ fn evil(c: &Canvas, face: &Path) {
 
 fn sweating(c: &Canvas) {
     pair(c, &[(20.0, 32.0), (30.0, 28.0), (42.0, 22.0)], 4.0);
-    eye(c, (32.0, 44.0), 12.0, (7.5, 1.0), 2.5);
-    eye(c, (68.0, 44.0), 12.0, (7.5, 1.0), 2.5);
+    eye(c, (32.0, 44.0), 12.0, (8.0, 1.0), 1.8);
+    eye(c, (68.0, 44.0), 12.0, (8.0, 1.0), 1.8);
+    nostrils(c, 60.0, 4.0);
     line(
         c,
         &[
-            (24.0, 72.0),
-            (30.0, 76.0),
-            (36.0, 72.0),
-            (42.0, 76.0),
-            (48.0, 72.0),
-            (54.0, 76.0),
-            (60.0, 72.0),
-            (66.0, 76.0),
-            (72.0, 72.0),
-            (78.0, 67.0),
+            (24.0, 74.0),
+            (30.0, 78.0),
+            (36.0, 74.0),
+            (42.0, 78.0),
+            (48.0, 74.0),
+            (54.0, 78.0),
+            (60.0, 74.0),
+            (66.0, 78.0),
+            (72.0, 74.0),
+            (78.0, 69.0),
         ],
         3.5,
     );
@@ -665,6 +901,24 @@ fn sweating(c: &Canvas) {
     ] {
         drop(c, at, r);
     }
+}
+
+fn thinking(c: &Canvas) {
+    line(c, &[(18.0, 32.0), (42.0, 38.0)], 5.0);
+    line(c, &[(56.0, 22.0), (68.0, 14.0), (82.0, 20.0)], 4.0);
+    line(c, &[(22.0, 45.0), (32.0, 47.0), (42.0, 45.0)], 4.0);
+    eye(c, (68.0, 40.0), 15.0, (-5.0, -7.0), 2.5);
+    nostrils(c, 61.0, 4.0);
+    line(c, &[(32.0, 80.0), (48.0, 82.0), (64.0, 77.0)], 3.5);
+    shape(
+        c,
+        &curve(
+            &[(60.0, 78.0), (70.0, 74.0), (74.0, 82.0), (66.0, 86.0)],
+            true,
+        ),
+        TONGUE,
+    );
+    drop(c, (14.0, 30.0), 4.0);
 }
 
 fn dead_inside(c: &Canvas) {
@@ -699,22 +953,44 @@ fn dead_inside(c: &Canvas) {
 fn bruh(c: &Canvas) {
     line(c, &[(18.0, 26.0), (30.0, 14.0), (44.0, 22.0)], 4.0);
     line(c, &[(56.0, 36.0), (80.0, 36.0)], 5.0);
-    lidded(c, 32.0, 40.0, 0.0);
-    lidded(c, 68.0, 43.0, 0.0);
-    line(c, &[(50.0, 50.0), (46.0, 62.0), (53.0, 63.0)], 3.0);
-    line(c, &[(44.0, 80.0), (60.0, 80.0), (74.0, 77.0)], 3.5);
+    lidded(c, 30.0, 40.0, 0.0);
+    lidded(c, 70.0, 43.0, 0.0);
+    nostrils(c, 62.0, 6.0);
+    line(c, &[(42.0, 82.0), (60.0, 82.0), (74.0, 79.0)], 3.5);
 }
 
 fn smug(c: &Canvas) {
-    pair(c, &[(16.0, 26.0), (28.0, 12.0), (44.0, 20.0)], 5.0);
-    lidded(c, 32.0, 42.0, 4.0);
-    lidded(c, 68.0, 42.0, 4.0);
+    pair(c, &[(18.0, 26.0), (30.0, 12.0), (44.0, 20.0)], 5.0);
+    lidded(c, 32.0, 40.0, 4.0);
+    lidded(c, 68.0, 40.0, 4.0);
+    nostrils(c, 58.0, 3.5);
     line(
         c,
-        &[(28.0, 72.0), (50.0, 77.0), (70.0, 73.0), (84.0, 58.0)],
+        &[(28.0, 72.0), (50.0, 77.0), (70.0, 73.0), (84.0, 60.0)],
         4.0,
     );
-    line(c, &[(40.0, 95.0), (50.0, 98.0), (60.0, 95.0)], 3.0);
+    line(c, &[(44.0, 112.0), (50.0, 118.0), (56.0, 112.0)], 3.0);
+}
+
+fn suspicious(c: &Canvas) {
+    pair(c, &[(18.0, 36.0), (44.0, 40.0)], 5.0);
+    for x in [32.0, 68.0] {
+        shape(
+            c,
+            &curve(
+                &[(x - 12.0, 46.0), (x, 43.0), (x + 12.0, 46.0), (x, 49.0)],
+                true,
+            ),
+            WHITE,
+        );
+        c.draw_circle((x + 7.0, 46.0), 2.0, &fill(BLACK));
+    }
+    nostrils(c, 62.0, 3.5);
+    line(
+        c,
+        &[(58.0, 80.0), (64.0, 77.0), (70.0, 80.0), (76.0, 77.0)],
+        3.5,
+    );
 }
 
 fn cool(c: &Canvas) {
@@ -733,13 +1009,14 @@ fn cool(c: &Canvas) {
         c.draw_rect(Rect::from_xywh(x + 4.0, 42.0, 4.0, 4.0), &fill(WHITE));
     }
     line(c, &[(36.0, 76.0), (52.0, 78.0), (67.0, 71.0)], 3.5);
+    sparkle(c, (72.0, 68.0), 6.0);
 }
 
 fn derp(c: &Canvas) {
-    line(c, &[(19.0, 22.0), (43.0, 21.0)], 3.5);
-    line(c, &[(58.0, 33.0), (77.0, 30.0)], 3.5);
-    eye(c, (32.0, 39.0), 13.0, (-5.0, -5.0), 4.5);
-    eye(c, (68.0, 45.0), 8.0, (3.0, 3.0), 3.2);
+    line(c, &[(17.0, 20.0), (45.0, 18.0)], 3.5);
+    line(c, &[(60.0, 35.0), (76.0, 32.0)], 3.5);
+    eye(c, (31.0, 38.0), 15.0, (-6.0, -6.0), 4.5);
+    eye(c, (69.0, 46.0), 7.0, (2.5, 2.5), 2.6);
     let mouth = curve(
         &[
             (24.0, 66.0),
@@ -751,7 +1028,14 @@ fn derp(c: &Canvas) {
         true,
     );
     shape(c, &mouth, BLACK);
-    teeth(c, &mouth, Rect::from_ltrb(20.0, 55.0, 85.0, 70.0), 5, true);
+    teeth(
+        c,
+        &mouth,
+        Rect::from_ltrb(20.0, 55.0, 85.0, 70.0),
+        5,
+        true,
+        Some(1),
+    );
     c.draw_path(&mouth, &ink(3.2));
     shape(
         c,
@@ -810,4 +1094,27 @@ fn bleh(c: &Canvas) {
     ];
     shape(c, &curve(&tongue, true), TONGUE);
     line(c, &[(51.0, 80.0), (50.0, 98.0), (52.0, 110.0)], 2.0);
+}
+
+fn melting(c: &Canvas) {
+    pair(c, &[(20.0, 30.0), (30.0, 28.0), (40.0, 23.0)], 4.0);
+    for x in [31.0, 69.0] {
+        shape(
+            c,
+            &Path::oval(Rect::from_ltrb(x - 9.0, 36.0, x + 9.0, 64.0), None),
+            WHITE,
+        );
+        c.draw_circle((x, 57.0), 3.5, &fill(BLACK));
+    }
+    line(
+        c,
+        &[
+            (30.0, 80.0),
+            (40.0, 84.0),
+            (50.0, 82.0),
+            (60.0, 87.0),
+            (70.0, 85.0),
+        ],
+        3.5,
+    );
 }
