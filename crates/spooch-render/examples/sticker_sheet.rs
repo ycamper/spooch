@@ -19,7 +19,7 @@ fn main() {
         .unwrap_or_else(|| "sticker-sheet.png".into());
     let open = std::env::args()
         .nth(2)
-        .unwrap_or_else(|| "rage_scream".into());
+        .unwrap_or_else(|| "rage_fury".into());
     if let Some(dir) = std::env::args().nth(3) {
         for problem in spooch_render::load_stickers(std::path::Path::new(&dir)) {
             eprintln!("{problem}");
@@ -64,7 +64,7 @@ fn main() {
     // sharp.
     for (name, x, y) in [
         ("stamp_approved", 600.0, 250.0),
-        ("rage_laugh", 860.0, 290.0),
+        ("rage_lol", 860.0, 290.0),
         ("moai", 900.0, 180.0),
         ("stamp_bug", 330.0, 590.0),
         ("pointer_click", 520.0, 470.0),
