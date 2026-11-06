@@ -1,7 +1,7 @@
 //! Stickers: things stamped on a capture. Most are Microsoft's Fluent Emoji
 //! in their 3D style (MIT; `stickers/LICENSE-fluentui-emoji.txt`), built
-//! into the app. Rubber stamps and mouse pointers are drawn as shapes, so
-//! they stay crisp at any size.
+//! into the app. Rubber stamps, rage-comic faces and mouse pointers are
+//! drawn as shapes, so they stay crisp at any size.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,6 +14,9 @@ use skia_safe::{
 
 use crate::LabelFont;
 
+mod face;
+pub use face::Face;
+
 /// What a sticker is drawn from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Art {
@@ -21,6 +24,8 @@ pub enum Art {
     Emoji(&'static [u8]),
     /// Rubber-stamp text in a double border, in its colour (0xRRGGBB).
     Stamp(&'static str, u32),
+    /// A rage-comic-style face.
+    Face(Face),
     /// A mouse pointer, for tutorials.
     Pointer(PointerShape),
 }
@@ -101,7 +106,28 @@ stickers![
     "bullseye",
     "chart_increasing",
     "chart_decreasing",
-    "hot_beverage";
+    "hot_beverage",
+    "moai",
+    "person_facepalming",
+    "person_shrugging",
+    "popcorn",
+    "clown_face",
+    "nail_polish",
+    "saluting_face",
+    "smirking_face",
+    "unamused_face",
+    "face_with_spiral_eyes",
+    "upside_down_face",
+    "face_holding_back_tears",
+    "dotted_line_face",
+    "brain",
+    "money_with_wings",
+    "goat",
+    "chicken",
+    "dog_face",
+    "frog",
+    "pile_of_poo",
+    "ghost";
     ("stamp_approved", Art::Stamp("APPROVED", 0x1f9d55)),
     ("stamp_nope", Art::Stamp("NOPE", 0xd92d2d)),
     ("stamp_bug", Art::Stamp("BUG", 0xd92d2d)),
@@ -110,6 +136,25 @@ stickers![
     ("stamp_wip", Art::Stamp("WIP", 0xd97706)),
     ("stamp_ship_it", Art::Stamp("SHIP IT", 0x7c3aed)),
     ("stamp_todo", Art::Stamp("TODO", 0xd97706)),
+    ("rage_fury", Art::Face(Face::Fury)),
+    ("rage_lol", Art::Face(Face::Lol)),
+    ("rage_sob", Art::Face(Face::Sob)),
+    ("rage_mind_blown", Art::Face(Face::MindBlown)),
+    ("rage_jaw_drop", Art::Face(Face::JawDrop)),
+    ("rage_duh", Art::Face(Face::Duh)),
+    ("rage_heart_eyes", Art::Face(Face::HeartEyes)),
+    ("rage_cringe", Art::Face(Face::Cringe)),
+    ("rage_evil", Art::Face(Face::Evil)),
+    ("rage_sweating", Art::Face(Face::Sweating)),
+    ("rage_thinking", Art::Face(Face::Thinking)),
+    ("rage_dead_inside", Art::Face(Face::DeadInside)),
+    ("rage_bruh", Art::Face(Face::Bruh)),
+    ("rage_smug", Art::Face(Face::Smug)),
+    ("rage_suspicious", Art::Face(Face::Suspicious)),
+    ("rage_cool", Art::Face(Face::Cool)),
+    ("rage_derp", Art::Face(Face::Derp)),
+    ("rage_bleh", Art::Face(Face::Bleh)),
+    ("rage_melting", Art::Face(Face::Melting)),
     ("pointer_arrow", Art::Pointer(PointerShape::Arrow)),
     ("pointer_click", Art::Pointer(PointerShape::Click)),
     ("pointer_hand", Art::Pointer(PointerShape::Hand)),
@@ -141,6 +186,7 @@ pub(crate) fn art_of(name: &str) -> Option<Art> {
 pub(crate) fn sticker_title(name: &str) -> String {
     match art_of(name) {
         Some(Art::Stamp(text, _)) => format!("{text} stamp"),
+        Some(Art::Face(f)) => f.title().into(),
         Some(Art::Pointer(p)) => p.title().into(),
         _ => {
             let words = name.replace('_', " ");
@@ -157,6 +203,7 @@ pub(crate) fn sticker_title(name: &str) -> String {
 pub(crate) fn sticker_aspect(name: &str) -> f32 {
     match art_of(name) {
         Some(Art::Stamp(text, _)) => stamp_box(text).map_or(1.0, |b| b.w / b.h),
+        Some(Art::Face(f)) => f.view().width() / f.view().height(),
         Some(Art::Pointer(p)) => p.view().width() / p.view().height(),
         _ => 1.0,
     }
@@ -179,7 +226,7 @@ pub(crate) fn clicked_size(name: &str, side: f32) -> (f32, f32) {
 }
 
 /// The sticker grid's tabs, by `Art::tab`.
-pub(crate) const STICKER_TABS: [&str; 3] = ["Emoji", "Stamps", "Pointers"];
+pub(crate) const STICKER_TABS: [&str; 4] = ["Emoji", "Stamps", "Faces", "Pointers"];
 
 impl Art {
     /// Its tab in the sticker grid, into `STICKER_TABS`.
@@ -187,7 +234,8 @@ impl Art {
         match self {
             Art::Emoji(_) => 0,
             Art::Stamp(..) => 1,
-            Art::Pointer(_) => 2,
+            Art::Face(_) => 2,
+            Art::Pointer(_) => 3,
         }
     }
 
@@ -442,6 +490,7 @@ pub fn draw_sticker(canvas: &Canvas, name: &'static str, rect: Rect, paint: &Pai
                 });
             }
         }
+        Some(Art::Face(f)) => fit(f.view(), &|c| f.draw(c)),
         Some(Art::Pointer(p)) => fit(p.view(), &|c| p.draw(c)),
         None => {}
     }
@@ -497,6 +546,7 @@ mod tests {
         assert!(STICKERS.len() <= usize::from(u8::MAX), "recents are u8s");
         assert_eq!(sticker_title("thumbs_up"), "Thumbs up");
         assert_eq!(sticker_title("stamp_ship_it"), "SHIP IT stamp");
+        assert_eq!(sticker_title("rage_fury"), "Rage face");
         assert_eq!(sticker_named("fire"), Some("fire"));
         assert_eq!(sticker_named("unicorn"), None);
         // Stamps are wide; the same area as a square.

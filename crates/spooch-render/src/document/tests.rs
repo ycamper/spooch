@@ -1178,7 +1178,7 @@ fn the_sticker_grid_has_a_tab_per_kind() {
     d.set_tool(Tool::Sticker);
     d.sticker_menu = Some(1);
     let g = d.sticker_grid().unwrap();
-    assert_eq!(g.tabs.len(), 3);
+    assert_eq!(g.tabs.len(), 4);
     assert_eq!(g.cells.len(), 8);
     assert!(
         g.cells
@@ -1186,10 +1186,10 @@ fn the_sticker_grid_has_a_tab_per_kind() {
             .all(|(i, _)| matches!(crate::STICKERS[*i].1, crate::Art::Stamp(..)))
     );
     // A click on a tab shows it, and the grid keeps its size.
-    let (tall, tab) = (g.rect.height(), g.tabs[2]);
+    let (tall, tab) = (g.rect.height(), g.tabs[3]);
     let mid = |a: i32, b: i32| (a + b) as f32 / 2.0;
     click(&mut d, mid(tab.left, tab.right), mid(tab.top, tab.bottom));
-    assert_eq!(d.sticker_menu, Some(2));
+    assert_eq!(d.sticker_menu, Some(3));
     let g = d.sticker_grid().unwrap();
     assert_eq!((g.cells.len(), g.rect.height()), (4, tall));
 }
