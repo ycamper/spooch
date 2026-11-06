@@ -412,42 +412,38 @@ fn fury(c: &Canvas) {
             &mark,
         );
     }
-    eye(c, (33.0, 47.0), 7.0, (0.0, 0.0), 2.0);
-    eye(c, (67.0, 47.0), 7.0, (0.0, 0.0), 2.0);
-    pair(c, &[(14.0, 28.0), (46.0, 42.0)], 7.0);
+    // Glaring eyes under brows pulled down hard.
+    let left = [(21.0, 39.0), (45.0, 49.0), (41.0, 56.0), (27.0, 55.0)];
+    for (points, x) in [(left.to_vec(), 35.0), (mirror(&left), 65.0)] {
+        shape(c, &curve(&points, true), WHITE);
+        c.draw_circle((x, 51.5), 2.6, &fill(BLACK));
+    }
+    pair(c, &[(13.0, 29.0), (48.0, 44.0)], 7.0);
+    // A roar: the corners pulled down, the teeth bared.
     let mouth = curve(
         &[
-            (16.0, 58.0),
-            (50.0, 63.0),
-            (84.0, 58.0),
-            (76.0, 82.0),
-            (64.0, 97.0),
-            (36.0, 97.0),
-            (24.0, 82.0),
+            (20.0, 72.0),
+            (50.0, 58.0),
+            (80.0, 72.0),
+            (82.0, 92.0),
+            (50.0, 97.0),
+            (18.0, 92.0),
         ],
         true,
     );
     c.draw_path(&mouth, &fill(BLACK));
     within(c, &mouth, || {
-        c.draw_oval(Rect::from_ltrb(30.0, 80.0, 70.0, 110.0), &fill(DARK_RED))
+        c.draw_oval(Rect::from_ltrb(30.0, 82.0, 70.0, 110.0), &fill(DARK_RED))
     });
-    teeth(c, &mouth, Rect::from_ltrb(10.0, 50.0, 90.0, 68.0), 6, true);
+    teeth(c, &mouth, Rect::from_ltrb(10.0, 50.0, 90.0, 72.0), 6, true);
     teeth(
         c,
         &mouth,
-        Rect::from_ltrb(10.0, 89.0, 90.0, 100.0),
+        Rect::from_ltrb(10.0, 88.0, 90.0, 100.0),
         5,
         false,
     );
     c.draw_path(&mouth, &ink(3.2));
-    for (at, r) in [
-        ((7.0, 64.0), 2.6),
-        ((93.0, 62.0), 2.6),
-        ((3.0, 80.0), 2.0),
-        ((97.0, 77.0), 2.0),
-    ] {
-        drop(c, at, r);
-    }
 }
 
 fn lol(c: &Canvas) {
