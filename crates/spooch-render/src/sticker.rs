@@ -136,14 +136,21 @@ stickers![
     ("stamp_wip", Art::Stamp("WIP", 0xd97706)),
     ("stamp_ship_it", Art::Stamp("SHIP IT", 0x7c3aed)),
     ("stamp_todo", Art::Stamp("TODO", 0xd97706)),
-    ("rage_scream", Art::Face(Face::Scream)),
+    ("rage_fury", Art::Face(Face::Fury)),
+    ("rage_lol", Art::Face(Face::Lol)),
+    ("rage_sob", Art::Face(Face::Sob)),
+    ("rage_mind_blown", Art::Face(Face::MindBlown)),
+    ("rage_jaw_drop", Art::Face(Face::JawDrop)),
+    ("rage_heart_eyes", Art::Face(Face::HeartEyes)),
+    ("rage_cringe", Art::Face(Face::Cringe)),
+    ("rage_evil", Art::Face(Face::Evil)),
+    ("rage_sweating", Art::Face(Face::Sweating)),
+    ("rage_dead_inside", Art::Face(Face::DeadInside)),
+    ("rage_bruh", Art::Face(Face::Bruh)),
     ("rage_smug", Art::Face(Face::Smug)),
-    ("rage_sad", Art::Face(Face::Sad)),
-    ("rage_blank", Art::Face(Face::Blank)),
-    ("rage_shocked", Art::Face(Face::Shocked)),
+    ("rage_cool", Art::Face(Face::Cool)),
     ("rage_derp", Art::Face(Face::Derp)),
-    ("rage_laugh", Art::Face(Face::Laugh)),
-    ("rage_disgust", Art::Face(Face::Disgust)),
+    ("rage_bleh", Art::Face(Face::Bleh)),
     ("pointer_arrow", Art::Pointer(PointerShape::Arrow)),
     ("pointer_click", Art::Pointer(PointerShape::Click)),
     ("pointer_hand", Art::Pointer(PointerShape::Hand)),
@@ -535,7 +542,7 @@ mod tests {
         assert!(STICKERS.len() <= usize::from(u8::MAX), "recents are u8s");
         assert_eq!(sticker_title("thumbs_up"), "Thumbs up");
         assert_eq!(sticker_title("stamp_ship_it"), "SHIP IT stamp");
-        assert_eq!(sticker_title("rage_scream"), "Rage face");
+        assert_eq!(sticker_title("rage_fury"), "Rage face");
         assert_eq!(sticker_named("fire"), Some("fire"));
         assert_eq!(sticker_named("unicorn"), None);
         // Stamps are wide; the same area as a square.
