@@ -1,6 +1,6 @@
 //! The sticker tool as it looks: a few stamped on a capture, the row of
 //! recent stickers, and the grid of all of them opened from it, on the tab
-//! of the sticker named second (a meme caption by default).
+//! of the sticker named second (a face by default).
 //!
 //!     cargo run --release -p spooch-render --example sticker_sheet -- sticker-sheet.png [moai]
 
@@ -18,7 +18,7 @@ fn main() {
         .unwrap_or_else(|| "sticker-sheet.png".into());
     let open = std::env::args()
         .nth(2)
-        .unwrap_or_else(|| "meme_this_is_fine".into());
+        .unwrap_or_else(|| "rage_scream".into());
     let desk = desk_pixels();
     let area = IRect::from_xywh(120, 120, 900, 520);
     let mut part = Vec::new();
@@ -54,11 +54,11 @@ fn main() {
     d.begin_drag(Point::new(330.0, 200.0));
     d.drag_to(Point::new(430.0, 300.0));
     d.end_drag();
-    // Stamps lean and wear; captions and pointers are drawn, so they stay
+    // Stamps lean and wear; faces and pointers are drawn, so they stay
     // sharp.
     for (name, x, y) in [
         ("stamp_approved", 600.0, 250.0),
-        ("meme_works_on_my_machine", 860.0, 290.0),
+        ("rage_laugh", 860.0, 290.0),
         ("moai", 900.0, 180.0),
         ("stamp_bug", 330.0, 590.0),
         ("pointer_click", 520.0, 470.0),
