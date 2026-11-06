@@ -1,8 +1,9 @@
 //! The sticker tool as it looks: a few stamped on a capture, the row of
 //! recent stickers, and the grid of all of them opened from it, on the tab
-//! of the sticker named second (a meme caption by default).
+//! of the sticker named second (a meme caption by default), with your own
+//! stickers from the folder named third.
 //!
-//!     cargo run --release -p spooch-render --example sticker_sheet -- sticker-sheet.png [moai]
+//!     cargo run --release -p spooch-render --example sticker_sheet -- sticker-sheet.png [moai] [dir]
 
 use skia_safe::{
     AlphaType, Color4f, ColorType, Data, EncodedImageFormat, IRect, ImageInfo, Paint, Point, Rect,
@@ -19,6 +20,11 @@ fn main() {
     let open = std::env::args()
         .nth(2)
         .unwrap_or_else(|| "meme_this_is_fine".into());
+    if let Some(dir) = std::env::args().nth(3) {
+        for problem in spooch_render::load_stickers(std::path::Path::new(&dir)) {
+            eprintln!("{problem}");
+        }
+    }
     let desk = desk_pixels();
     let area = IRect::from_xywh(120, 120, 900, 520);
     let mut part = Vec::new();
@@ -43,7 +49,7 @@ fn main() {
         d.end_drag();
     };
     let pick = |d: &mut Document, name: &str| {
-        let i = spooch_render::STICKERS
+        let i = spooch_render::stickers()
             .iter()
             .position(|(n, _)| *n == name)
             .unwrap();

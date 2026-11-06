@@ -33,6 +33,7 @@ enum Row {
     SignedIn,
     Sync,
     File,
+    Stickers,
 }
 
 /// What the shell has to do about a click.
@@ -45,6 +46,8 @@ pub enum SettingsChange {
     Command(Command),
     /// Open the settings file.
     EditFile,
+    /// Open the stickers folder.
+    OpenStickers,
     /// Pause the global shortcuts (`true`) while one is being recorded,
     /// or bring them back.
     PauseShortcuts(bool),
@@ -140,6 +143,10 @@ impl SettingsForm {
             rows.push(switch(Row::Sync, "Sync captures", s.sync));
         }
         rows.push((Row::File, SettingsItem::Link("Open settings.txt".into())));
+        rows.push((
+            Row::Stickers,
+            SettingsItem::Link("Open stickers folder".into()),
+        ));
         let (rows, items) = rows.into_iter().unzip();
         self.rows = rows;
         items
@@ -160,6 +167,7 @@ impl SettingsForm {
                 Row::Login => Some(SettingsChange::Command(Command::ToggleLaunchAtLogin)),
                 Row::Sync => Some(SettingsChange::Command(Command::ToggleSync)),
                 Row::File => Some(SettingsChange::EditFile),
+                Row::Stickers => Some(SettingsChange::OpenStickers),
                 Row::Palette => {
                     let next = Palette::by_name(&settings.palette).map_or(0, |i| i + 1);
                     let name = PALETTES[next % PALETTES.len()].name.to_lowercase();
@@ -321,6 +329,13 @@ mod tests {
                 &settings
             ),
             Some(SettingsChange::EditFile)
+        );
+        assert_eq!(
+            form.change(
+                SettingsEvent::Click(index(&items, "Open stickers folder")),
+                &settings
+            ),
+            Some(SettingsChange::OpenStickers)
         );
         // Signed in, the same buttons set the password or sign out.
         let items = form.items(&SettingsFacts {

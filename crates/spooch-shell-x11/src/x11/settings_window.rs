@@ -218,6 +218,7 @@ impl App {
                     self.grab_shortcuts();
                 }
                 Some(SettingsChange::EditFile) => system::open(&self.config.settings_path()),
+                Some(SettingsChange::OpenStickers) => system::open(&self.config.stickers_dir()),
                 Some(SettingsChange::Problem(p)) => self.settings_note(Some(p)),
                 None => {}
             }

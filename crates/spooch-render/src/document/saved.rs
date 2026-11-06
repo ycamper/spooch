@@ -430,7 +430,7 @@ impl TryFrom<SavedMark> for Mark {
                 angle,
             } => Mark::Sticker(crate::Sticker {
                 rect: rect(r),
-                name: crate::sticker::sticker_named(&name).unwrap_or(crate::STICKERS[0].0),
+                name: crate::sticker::sticker_named(&name).unwrap_or(crate::stickers()[0].0),
                 angle,
             }),
             SavedMark::Highlight {

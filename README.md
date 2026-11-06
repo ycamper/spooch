@@ -58,7 +58,8 @@ Linux targets; cross-compiling to `windows-gnu` isn't supported.
 - **Settings...** in the tray, or the gear in the editor, changes shortcuts
   and the rest. They live in `%APPDATA%\Spooch\settings.txt`
   (`~/.config/spooch/settings.txt`) and reload when saved. Custom frames go
-  in the `frames` folder next to it.
+  in the `frames` folder next to it, and your own sticker pictures in
+  `stickers`, which show in the sticker picker's Yours tab.
 
 The log, with each capture's timings, is `%LOCALAPPDATA%\Spooch\spooch.log`
 (`~/.local/state/spooch/spooch.log`).

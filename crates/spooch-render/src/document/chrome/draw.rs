@@ -12,7 +12,7 @@ use super::*;
 use crate::document::bar::BarLayout;
 use crate::document::style::{PALETTES, SIZES};
 use crate::document::theme::{
-    ACTIVE, FIELD, HOVER, ICON, PANEL, PANEL_EDGE, TEXT, WHITE, centred_baseline, chevron,
+    ACTIVE, FIELD, HOVER, ICON, MUTED, PANEL, PANEL_EDGE, TEXT, WHITE, centred_baseline, chevron,
     draw_list, fill_rrect, rounded_panel,
 };
 use crate::{Arrow, HighlightLook};
@@ -72,6 +72,7 @@ impl Document {
             picker: picker.as_ref().map(|k| (k.pill, k.list)),
             stickers: self.styles.stickers,
             sticker_menu: self.sticker_menu,
+            own_stickers: crate::sticker::own_version(),
             bar_menu: self.bar_menu,
             loupe: self.loupe_at,
             maximized: self.window_maximized,
@@ -515,7 +516,7 @@ impl Document {
             }
             for &(i, cell) in &g.cells {
                 let rect = Rect::from(cell).with_offset(-origin);
-                let (name, _) = crate::STICKERS[i];
+                let (name, _) = crate::stickers()[i];
                 if name == current || self.hovered == Some(Hit::StickerOption(i)) {
                     let p = fill(if name == current { ACTIVE } else { HOVER });
                     canvas.draw_rrect(RRect::new_rect_xy(rect, 7.0 * s, 7.0 * s), &p);
@@ -526,6 +527,24 @@ impl Document {
                     rect.with_inset((4.0 * s, 4.0 * s)),
                     &Paint::default(),
                 );
+            }
+            // An empty Yours tab says where pictures go.
+            if self.sticker_menu == Some(crate::sticker::OWN_TAB)
+                && g.cells.is_empty()
+                && let (Some(f), Some(tab)) = (&font, g.tabs.first())
+            {
+                let top = (tab.bottom - g.rect.top) as f32 + 30.0 * s;
+                for (k, line) in [
+                    "Your own pictures go here:",
+                    "Settings, Open stickers folder",
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let x = bounds.center_x() - f.measure_str(line, None).0 / 2.0;
+                    let y = top + k as f32 * 20.0 * s;
+                    canvas.draw_str(line, (x, y), f, &fill(MUTED));
+                }
             }
         })
     }
@@ -654,7 +673,7 @@ impl Document {
             }
             Hit::Sticker(i) => crate::sticker::sticker_title(self.recent_stickers()[i]),
             Hit::StickerMore => "All stickers".to_string(),
-            Hit::StickerOption(i) => crate::sticker::sticker_title(crate::STICKERS.get(i)?.0),
+            Hit::StickerOption(i) => crate::sticker::sticker_title(crate::stickers().get(i)?.0),
             Hit::Look => {
                 let (style, _) = self.shown_style()?;
                 let name = |v: u8| {

@@ -1,5 +1,5 @@
-//! Where Spooch keeps its settings, custom frames and the markers it
-//! leaves itself, and reading them. The shell names the folder
+//! Where Spooch keeps its settings, custom frames and stickers, and the
+//! markers it leaves itself, and reading them. The shell names the folder
 //! (`%APPDATA%\Spooch`, `$XDG_CONFIG_HOME/spooch`); the rest is the same
 //! everywhere.
 
@@ -39,6 +39,11 @@ impl Config {
     /// People's own frames, next to the settings.
     pub fn frames_dir(&self) -> PathBuf {
         self.dir.join("frames")
+    }
+
+    /// People's own stickers, next to the settings.
+    pub fn stickers_dir(&self) -> PathBuf {
+        self.dir.join("stickers")
     }
 
     /// The last picks (`Styles::remembered`), kept between runs.
@@ -83,6 +88,7 @@ impl Config {
         let (styles, problem) = crate::apply_settings(styles, &settings);
         problems.extend(problem);
         problems.extend(spooch_render::load_frames(&self.frames_dir()));
+        problems.extend(spooch_render::load_stickers(&self.stickers_dir()));
         for p in &problems {
             log::line(format!("settings: {p}"));
         }
@@ -112,16 +118,17 @@ impl Config {
         }
     }
 
-    /// Call `changed` whenever the settings file or the frames folder
-    /// changes, from a thread that looks once a second, so edits take
-    /// effect when they're saved.
+    /// Call `changed` whenever the settings file or the frames or
+    /// stickers folder changes, from a thread that looks once a second, so
+    /// edits take effect when they're saved.
     pub fn watch(&self, changed: impl Fn() + Send + 'static) {
-        let (file, frames) = (self.settings_path(), self.frames_dir());
+        let file = self.settings_path();
+        let dirs = [self.frames_dir(), self.stickers_dir()];
         std::thread::spawn(move || {
-            let mut seen = stamp(&file, &frames);
+            let mut seen = stamp(&file, &dirs);
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                let now = stamp(&file, &frames);
+                let now = stamp(&file, &dirs);
                 if now != seen {
                     seen = now;
                     changed();
@@ -132,23 +139,24 @@ impl Config {
 }
 
 /// What `watch` compares: the settings file's modified time, and each
-/// frame file's name and modified time.
-fn stamp(file: &std::path::Path, frames: &std::path::Path) -> Vec<(String, Option<SystemTime>)> {
+/// file's path and modified time in `dirs`.
+fn stamp(file: &std::path::Path, dirs: &[PathBuf]) -> Vec<(PathBuf, Option<SystemTime>)> {
     let modified = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-    let mut out = vec![(String::new(), modified(file))];
-    let mut entries: Vec<_> = std::fs::read_dir(frames)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| {
-            (
-                e.file_name().to_string_lossy().into_owned(),
-                modified(&e.path()),
-            )
-        })
-        .collect();
-    entries.sort();
-    out.extend(entries);
+    let mut out = vec![(PathBuf::new(), modified(file))];
+    for dir in dirs {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| {
+                let path = e.path();
+                let when = modified(&path);
+                (path, when)
+            })
+            .collect();
+        entries.sort();
+        out.extend(entries);
+    }
     out
 }
 
@@ -174,11 +182,16 @@ mod tests {
         assert!(!config.wants_welcome(false));
         assert!(config.wants_welcome(true));
 
-        // Saving the file or adding a frame changes what the watcher sees.
-        let before = stamp(&config.settings_path(), &config.frames_dir());
+        // Saving the file, or adding a frame or a sticker, changes what
+        // the watcher sees.
+        let dirs = [config.frames_dir(), config.stickers_dir()];
+        let before = stamp(&config.settings_path(), &dirs);
         std::fs::create_dir_all(config.frames_dir()).unwrap();
         std::fs::write(config.frames_dir().join("mine.toml"), "").unwrap();
-        assert_ne!(stamp(&config.settings_path(), &config.frames_dir()), before);
+        let after = stamp(&config.settings_path(), &dirs);
+        assert_ne!(after, before);
+        std::fs::write(config.stickers_dir().join("rage.png"), "").unwrap();
+        assert_ne!(stamp(&config.settings_path(), &dirs), after);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

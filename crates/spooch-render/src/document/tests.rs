@@ -1134,11 +1134,11 @@ fn stickers_stamp_size_swap_and_keep() {
     assert_eq!(d.counts().stickers, 2);
 
     // Picking one moves it to the front of the row, and the tool stamps it.
-    let fire = crate::STICKERS
+    let fire = crate::stickers()
         .iter()
         .position(|(n, _)| *n == "fire")
         .unwrap();
-    let rocket = crate::STICKERS
+    let rocket = crate::stickers()
         .iter()
         .position(|(n, _)| *n == "rocket")
         .unwrap();
@@ -1178,12 +1178,12 @@ fn the_sticker_grid_has_a_tab_per_kind() {
     d.set_tool(Tool::Sticker);
     d.sticker_menu = Some(1);
     let g = d.sticker_grid().unwrap();
-    assert_eq!(g.tabs.len(), 4);
+    assert_eq!(g.tabs.len(), 5);
     assert_eq!(g.cells.len(), 8);
     assert!(
         g.cells
             .iter()
-            .all(|(i, _)| matches!(crate::STICKERS[*i].1, crate::Art::Stamp(..)))
+            .all(|(i, _)| matches!(crate::stickers()[*i].1, crate::Art::Stamp(..)))
     );
     // A click on a tab shows it, and the grid keeps its size.
     let (tall, tab) = (g.rect.height(), g.tabs[3]);
@@ -1198,7 +1198,7 @@ fn the_sticker_grid_has_a_tab_per_kind() {
 fn stamps_are_wide_and_lean_and_swaps_keep_the_area() {
     let mut d = sticker_doc();
     let at = |name: &str| {
-        crate::STICKERS
+        crate::stickers()
             .iter()
             .position(|(n, _)| *n == name)
             .unwrap()

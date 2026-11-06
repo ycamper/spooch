@@ -79,17 +79,17 @@ pub(super) struct StickerGrid {
     pub rect: IRect,
     /// Its tabs, into `STICKER_TABS`.
     pub tabs: Vec<IRect>,
-    /// The open tab's stickers: each one's index in `STICKERS`, and cell.
+    /// The open tab's stickers: each one's index in `stickers()`, and cell.
     pub cells: Vec<(usize, IRect)>,
 }
 
 /// Tab `tab`'s stickers laid out in the grid, as their index in
-/// `STICKERS`, column, row and cells across; and how many rows they take.
+/// `stickers()`, column, row and cells across; and how many rows they take.
 fn sticker_spots(tab: usize) -> (Vec<(usize, i32, i32, i32)>, i32) {
     let mut spots = Vec::new();
     let (mut c, mut r) = (0, 0);
-    for (i, (_, art)) in crate::STICKERS.iter().enumerate() {
-        if art.tab() != tab {
+    for (i, (name, art)) in crate::stickers().iter().enumerate() {
+        if art.tab() != tab || !crate::sticker::sticker_shown(name) {
             continue;
         }
         let span = art.cells() as i32;
@@ -120,7 +120,7 @@ pub(super) enum Hit {
     /// The label font button.
     Font,
     /// A recently picked sticker on the style row, the button that opens
-    /// every sticker, one in that grid (into `STICKERS`), and one of the
+    /// every sticker, one in that grid (into `stickers()`), and one of the
     /// grid's tabs (into `STICKER_TABS`).
     Sticker(usize),
     StickerMore,
@@ -279,6 +279,8 @@ pub(super) struct ChromeKey {
     picker: Option<(IRect, Option<IRect>)>,
     stickers: [u8; super::style::RECENT_STICKERS],
     sticker_menu: Option<usize>,
+    /// Which version of your own stickers the grid shows.
+    own_stickers: u64,
     bar_menu: Option<super::bar::BarMenu>,
     loupe: Option<(i32, i32)>,
     maximized: bool,
@@ -864,7 +866,7 @@ impl Document {
             }
             Some(Hit::Sticker(i)) => {
                 let name = self.recent_stickers()[i];
-                if let Some(index) = crate::STICKERS.iter().position(|(n, _)| *n == name) {
+                if let Some(index) = crate::stickers().iter().position(|(n, _)| *n == name) {
                     self.pick_sticker(index);
                 }
             }

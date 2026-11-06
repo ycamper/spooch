@@ -7,7 +7,7 @@ use skia_safe::{Color4f, Point, Rect};
 use super::frame::Frame;
 use super::theme::hex;
 use super::{Document, Mark, Redaction, Tool};
-use crate::{HighlightLook, LabelFont, Look, Plate, STICKERS};
+use crate::{HighlightLook, LabelFont, Look, Plate, stickers};
 
 /// Eight mark colours on Shift+1 to Shift+8, balanced in OKLCH. Every
 /// preset keeps the same slots: red first, yellow third, white last.
@@ -181,7 +181,7 @@ pub struct Styles {
     pub(super) gallery: bool,
     /// Whether the style row shows opacity and the edge.
     pub(super) extras: bool,
-    /// The stickers picked lately, newest first, into `STICKERS`; the
+    /// The stickers picked lately, newest first, into `stickers()`; the
     /// first is the one the tool stamps.
     pub(super) stickers: [u8; RECENT_STICKERS],
     /// The look every capture starts with ("Use for every capture" in the
@@ -212,7 +212,7 @@ impl Default for Styles {
             gallery: true,
             extras: false,
             stickers: FIRST_STICKERS
-                .map(|name| STICKERS.iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
+                .map(|name| stickers().iter().position(|(n, _)| *n == name).unwrap_or(0) as u8),
             pinned: None,
             quick: [[None; QUICK_STYLES]; Tool::ALL.len()],
         }
@@ -774,23 +774,28 @@ impl Document {
         }
     }
 
-    /// The sticker the tool stamps: the one picked last.
+    /// The sticker the tool stamps: the one picked last whose picture is
+    /// still there.
     pub(super) fn sticker(&self) -> &'static str {
-        self.recent_stickers()[0]
+        let recent = self.recent_stickers();
+        recent
+            .into_iter()
+            .find(|n| crate::sticker::sticker_shown(n))
+            .unwrap_or(recent[0])
     }
 
     /// The stickers picked lately, newest first.
     pub(super) fn recent_stickers(&self) -> [&'static str; RECENT_STICKERS] {
         self.styles
             .stickers
-            .map(|i| STICKERS[usize::from(i) % STICKERS.len()].0)
+            .map(|i| stickers()[usize::from(i) % stickers().len()].0)
     }
 
-    /// Pick sticker `index` (into `STICKERS`): the tool stamps it next, it
+    /// Pick sticker `index` (into `stickers()`): the tool stamps it next, it
     /// moves to the front of the row, and selected stickers turn into it
     /// (one undo step). Returns whether anything changed.
     pub fn pick_sticker(&mut self, index: usize) -> bool {
-        let Some(&(name, _)) = STICKERS.get(index) else {
+        let Some(&(name, _)) = stickers().get(index) else {
             return false;
         };
         let picked = index as u8;
