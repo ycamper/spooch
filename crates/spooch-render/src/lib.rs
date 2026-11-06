@@ -20,7 +20,7 @@ pub use document::{
 pub use select::{
     OUTSIDE_BRIGHTNESS, nudge_pointer, picking_hint, selecting_loupe, selection_frame,
 };
-pub use sticker::{Art, PointerShape, STICKERS, Sticker};
+pub use sticker::{Art, PointerShape, Sticker, load_stickers, stickers};
 
 use crate::document::{fill, stroke};
 use std::cell::RefCell;

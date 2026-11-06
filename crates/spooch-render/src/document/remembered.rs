@@ -15,7 +15,8 @@ use super::style::{
     Styles, tool_index,
 };
 use super::{Format, Tool};
-use crate::{HighlightLook, LabelFont, Plate, STICKERS};
+use crate::sticker::sticker_named;
+use crate::{HighlightLook, LabelFont, Plate, stickers};
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -122,7 +123,7 @@ impl Styles {
             stickers: self
                 .stickers
                 .iter()
-                .filter_map(|&i| STICKERS.get(usize::from(i)))
+                .filter_map(|&i| stickers().get(usize::from(i)))
                 .map(|(name, _)| name.to_string())
                 .collect(),
             format: Some(format.extension().to_string()),
@@ -167,7 +168,8 @@ impl Styles {
         let named = file
             .stickers
             .iter()
-            .filter_map(|name| STICKERS.iter().position(|(n, _)| n == name))
+            .filter_map(|name| sticker_named(name))
+            .filter_map(|name| stickers().iter().position(|(n, _)| *n == name))
             .map(|i| i as u8);
         let mut stickers = Vec::with_capacity(RECENT_STICKERS);
         for i in named.chain(self.stickers) {
@@ -193,6 +195,7 @@ impl Styles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sticker::BUILT_IN;
 
     #[test]
     fn picks_come_back() {
@@ -208,7 +211,7 @@ mod tests {
         styles.pinned = Some(styles.framing);
         styles.quick[t][1] = Some(styles.tools[t]);
         styles.gallery = false;
-        styles.stickers[0] = STICKERS.len() as u8 - 1;
+        styles.stickers[0] = BUILT_IN.len() as u8 - 1;
         let json = styles.remembered(Format::Jpeg);
         let (back, format) = Styles::default().with_remembered(&json).unwrap();
         assert_eq!(back, styles);
@@ -237,7 +240,7 @@ mod tests {
         assert_eq!(back.pinned, None);
         // Fire and eyes move to the front, the rest follow in their old
         // order, and none twice.
-        let at = |name| STICKERS.iter().position(|(n, _)| *n == name).unwrap() as u8;
+        let at = |name| BUILT_IN.iter().position(|(n, _)| *n == name).unwrap() as u8;
         assert_eq!(back.stickers[..2], [at("fire"), at("eyes")]);
         let mut seen = back.stickers.to_vec();
         seen.sort();
@@ -249,9 +252,9 @@ mod tests {
 
     #[test]
     fn more_stickers_than_kept_still_count() {
-        let names: Vec<_> = STICKERS.iter().rev().map(|(n, _)| *n).collect();
+        let names: Vec<_> = BUILT_IN.iter().rev().map(|(n, _)| *n).collect();
         let json = serde_json::json!({ "stickers": names }).to_string();
         let (back, _) = Styles::default().with_remembered(&json).unwrap();
-        assert_eq!(back.stickers[0], STICKERS.len() as u8 - 1);
+        assert_eq!(back.stickers[0], BUILT_IN.len() as u8 - 1);
     }
 }

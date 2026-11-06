@@ -1,7 +1,11 @@
 //! Stickers: things stamped on a capture. Most are Microsoft's Fluent Emoji
 //! in their 3D style (MIT; `stickers/LICENSE-fluentui-emoji.txt`), built
 //! into the app. Rubber stamps, rage-comic faces and mouse pointers are
-//! drawn as shapes, so they stay crisp at any size.
+//! drawn as shapes, so they stay crisp at any size. Your own pictures come
+//! from the stickers folder (`own`).
+
+mod face;
+mod own;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,8 +18,9 @@ use skia_safe::{
 
 use crate::LabelFont;
 
-mod face;
 pub use face::Face;
+pub use own::load_stickers;
+pub(crate) use own::version as own_version;
 
 /// What a sticker is drawn from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,6 +33,8 @@ pub enum Art {
     Face(Face),
     /// A mouse pointer, for tutorials.
     Pointer(PointerShape),
+    /// One of yours, from the stickers folder.
+    Picture,
 }
 
 /// The mouse pointers there are stickers of.
@@ -43,10 +50,10 @@ pub enum PointerShape {
 
 macro_rules! stickers {
     ($($name:literal),* $(,)?; $($extra:expr),* $(,)?) => {
-        /// Every sticker by name, in the order the picker shows them: the
-        /// emoji, then stamps, then pointers. New ones go at the end, since
-        /// the remembered recent stickers are indexes into this.
-        pub const STICKERS: &[(&str, Art)] = &[
+        /// The built-in stickers by name, in the order the picker shows
+        /// them: the emoji, then stamps, faces and pointers. Files keep
+        /// stickers by name, so new ones can go anywhere.
+        pub(crate) const BUILT_IN: &[(&str, Art)] = &[
             $(($name, Art::Emoji(include_bytes!(concat!("../stickers/", $name, ".png"))))),*,
             $($extra),*
         ];
@@ -172,14 +179,27 @@ pub(crate) fn placed_angle(name: &str) -> f32 {
     }
 }
 
-/// The sticker called `name`, as the set has it, if there is one.
+/// Every sticker by name: the built-in ones, then yours. Recent stickers
+/// are indexes into it, so it only grows.
+pub fn stickers() -> &'static [(&'static str, Art)] {
+    own::list()
+}
+
+/// The sticker called `name`, as the set has it, if there is one. One of
+/// yours keeps its place while its file is gone, in case it comes back.
 pub fn sticker_named(name: &str) -> Option<&'static str> {
-    STICKERS.iter().map(|(n, _)| *n).find(|n| *n == name)
+    own::named(name)
 }
 
 /// What sticker `name` is drawn from.
 pub(crate) fn art_of(name: &str) -> Option<Art> {
-    STICKERS.iter().find(|(n, _)| *n == name).map(|(_, a)| *a)
+    stickers().iter().find(|(n, _)| *n == name).map(|(_, a)| *a)
+}
+
+/// Whether sticker `name` can be drawn now: not one of yours whose file has
+/// gone.
+pub(crate) fn sticker_shown(name: &str) -> bool {
+    art_of(name) != Some(Art::Picture) || own::picture(name).is_some()
 }
 
 /// A sticker's name for people: "thumbs_up" is "Thumbs up".
@@ -188,6 +208,11 @@ pub(crate) fn sticker_title(name: &str) -> String {
         Some(Art::Stamp(text, _)) => format!("{text} stamp"),
         Some(Art::Face(f)) => f.title().into(),
         Some(Art::Pointer(p)) => p.title().into(),
+        Some(Art::Picture) => {
+            let file = name.strip_prefix(own::PREFIX).unwrap_or(name);
+            let stem = std::path::Path::new(file).file_stem();
+            stem.map_or(file.into(), |s| s.to_string_lossy().into_owned())
+        }
         _ => {
             let words = name.replace('_', " ");
             let mut chars = words.chars();
@@ -205,6 +230,7 @@ pub(crate) fn sticker_aspect(name: &str) -> f32 {
         Some(Art::Stamp(text, _)) => stamp_box(text).map_or(1.0, |b| b.w / b.h),
         Some(Art::Face(f)) => f.view().width() / f.view().height(),
         Some(Art::Pointer(p)) => p.view().width() / p.view().height(),
+        Some(Art::Picture) => own::picture(name).map_or(1.0, |p| p.size.0 as f32 / p.size.1 as f32),
         _ => 1.0,
     }
 }
@@ -226,7 +252,10 @@ pub(crate) fn clicked_size(name: &str, side: f32) -> (f32, f32) {
 }
 
 /// The sticker grid's tabs, by `Art::tab`.
-pub(crate) const STICKER_TABS: [&str; 4] = ["Emoji", "Stamps", "Faces", "Pointers"];
+pub(crate) const STICKER_TABS: [&str; 5] = ["Emoji", "Stamps", "Faces", "Pointers", "Yours"];
+
+/// The tab of your own stickers, into `STICKER_TABS`.
+pub(crate) const OWN_TAB: usize = 4;
 
 impl Art {
     /// Its tab in the sticker grid, into `STICKER_TABS`.
@@ -236,6 +265,7 @@ impl Art {
             Art::Stamp(..) => 1,
             Art::Face(_) => 2,
             Art::Pointer(_) => 3,
+            Art::Picture => OWN_TAB,
         }
     }
 
@@ -435,20 +465,30 @@ fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
 }
 
 thread_local! {
-    static IMAGES: RefCell<HashMap<&'static str, Image>> = RefCell::new(HashMap::new());
+    /// Decoded pictures, with the version of yours each was decoded from.
+    static IMAGES: RefCell<HashMap<&'static str, (u64, Image)>> = RefCell::new(HashMap::new());
 }
 
-/// Emoji sticker `name`'s picture, decoded once per thread.
+/// An emoji's or your sticker `name`'s picture, decoded once per thread,
+/// and again when your file changes.
 pub fn sticker_image(name: &'static str) -> Option<Image> {
+    let picture = match art_of(name)? {
+        Art::Emoji(png) => Some((0, Data::new_copy(png))),
+        Art::Picture => own::picture(name).map(|p| (p.version, Data::new_copy(&p.bytes))),
+        _ => None,
+    };
     IMAGES.with(|cache| {
-        if let Some(img) = cache.borrow().get(name) {
-            return Some(img.clone());
-        }
-        let Some(Art::Emoji(png)) = art_of(name) else {
+        let Some((version, data)) = picture else {
+            cache.borrow_mut().remove(name);
             return None;
         };
-        let img = Image::from_encoded(Data::new_copy(png))?;
-        cache.borrow_mut().insert(name, img.clone());
+        if let Some((v, img)) = cache.borrow().get(name)
+            && *v == version
+        {
+            return Some(img.clone());
+        }
+        let img = Image::from_encoded(data)?;
+        cache.borrow_mut().insert(name, (version, img.clone()));
         Some(img)
     })
 }
@@ -472,12 +512,21 @@ pub fn draw_sticker(canvas: &Canvas, name: &'static str, rect: Rect, paint: &Pai
         canvas.restore();
     };
     match art_of(name) {
-        Some(Art::Emoji(_)) => {
+        Some(Art::Emoji(_) | Art::Picture) => {
             if let Some(img) = sticker_image(name) {
+                // As big as fits, keeping its shape.
+                let (w, h) = (img.width() as f32, img.height() as f32);
+                let k = (rect.width() / w).min(rect.height() / h);
+                let fitted = Rect::from_xywh(
+                    rect.center_x() - w * k / 2.0,
+                    rect.center_y() - h * k / 2.0,
+                    w * k,
+                    h * k,
+                );
                 canvas.draw_image_rect_with_sampling_options(
                     &img,
                     None,
-                    rect,
+                    fitted,
                     SamplingOptions::from(CubicResampler::mitchell()),
                     paint,
                 );
@@ -532,7 +581,7 @@ mod tests {
 
     #[test]
     fn every_sticker_draws() {
-        for (name, art) in STICKERS {
+        for (name, art) in BUILT_IN {
             match art {
                 Art::Emoji(_) => {
                     let img = sticker_image(name).unwrap_or_else(|| panic!("{name}"));
@@ -543,7 +592,10 @@ mod tests {
             let a = sticker_aspect(name);
             assert!(a.is_finite() && a > 0.2 && a < 6.0, "{name}: {a}");
         }
-        assert!(STICKERS.len() <= usize::from(u8::MAX), "recents are u8s");
+        assert!(
+            BUILT_IN.len() + own::MOST <= usize::from(u8::MAX),
+            "recents are u8s"
+        );
         assert_eq!(sticker_title("thumbs_up"), "Thumbs up");
         assert_eq!(sticker_title("stamp_ship_it"), "SHIP IT stamp");
         assert_eq!(sticker_title("rage_fury"), "Rage face");

@@ -289,6 +289,7 @@ impl Shell {
                 self.register_hotkeys();
             }
             SettingsChange::EditFile => system::open(&self.config.settings_path()),
+            SettingsChange::OpenStickers => system::open(&self.config.stickers_dir()),
             SettingsChange::Problem(p) => settings_window::set_note(Some(p)),
             SettingsChange::Command(_) => {}
         }
