@@ -1,7 +1,7 @@
 //! Stickers: things stamped on a capture. Most are Microsoft's Fluent Emoji
 //! in their 3D style (MIT; `stickers/LICENSE-fluentui-emoji.txt`), built
-//! into the app. Rubber stamps and mouse pointers are drawn as shapes, so
-//! they stay crisp at any size.
+//! into the app. Rubber stamps, meme captions and mouse pointers are drawn
+//! as shapes, so they stay crisp at any size.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -21,6 +21,9 @@ pub enum Art {
     Emoji(&'static [u8]),
     /// Rubber-stamp text in a double border, in its colour (0xRRGGBB).
     Stamp(&'static str, u32),
+    /// A meme caption: white Impact-style text, outlined in black, a line
+    /// or two.
+    Caption(&'static str),
     /// A mouse pointer, for tutorials.
     Pointer(PointerShape),
 }
@@ -39,8 +42,8 @@ pub enum PointerShape {
 macro_rules! stickers {
     ($($name:literal),* $(,)?; $($extra:expr),* $(,)?) => {
         /// Every sticker by name, in the order the picker shows them: the
-        /// emoji, then stamps, then pointers. New ones go at the end, since
-        /// the remembered recent stickers are indexes into this.
+        /// emoji, then stamps, meme captions and pointers. Files keep
+        /// stickers by name, so new ones can go anywhere.
         pub const STICKERS: &[(&str, Art)] = &[
             $(($name, Art::Emoji(include_bytes!(concat!("../stickers/", $name, ".png"))))),*,
             $($extra),*
@@ -101,7 +104,28 @@ stickers![
     "bullseye",
     "chart_increasing",
     "chart_decreasing",
-    "hot_beverage";
+    "hot_beverage",
+    "moai",
+    "person_facepalming",
+    "person_shrugging",
+    "popcorn",
+    "clown_face",
+    "nail_polish",
+    "saluting_face",
+    "smirking_face",
+    "unamused_face",
+    "face_with_spiral_eyes",
+    "upside_down_face",
+    "face_holding_back_tears",
+    "dotted_line_face",
+    "brain",
+    "money_with_wings",
+    "goat",
+    "chicken",
+    "dog_face",
+    "frog",
+    "pile_of_poo",
+    "ghost";
     ("stamp_approved", Art::Stamp("APPROVED", 0x1f9d55)),
     ("stamp_nope", Art::Stamp("NOPE", 0xd92d2d)),
     ("stamp_bug", Art::Stamp("BUG", 0xd92d2d)),
@@ -110,6 +134,33 @@ stickers![
     ("stamp_wip", Art::Stamp("WIP", 0xd97706)),
     ("stamp_ship_it", Art::Stamp("SHIP IT", 0x7c3aed)),
     ("stamp_todo", Art::Stamp("TODO", 0xd97706)),
+    ("meme_this_is_fine", Art::Caption("THIS IS FINE")),
+    ("meme_works_on_my_machine", Art::Caption("WORKS ON\nMY MACHINE")),
+    ("meme_its_a_feature", Art::Caption("IT'S A\nFEATURE")),
+    ("meme_y_u_no", Art::Caption("Y U NO")),
+    ("meme_challenge_accepted", Art::Caption("CHALLENGE\nACCEPTED")),
+    ("meme_me_gusta", Art::Caption("ME GUSTA")),
+    ("meme_fffuuuu", Art::Caption("FFFUUUU")),
+    ("meme_forever_alone", Art::Caption("FOREVER\nALONE")),
+    ("meme_much_wow", Art::Caption("MUCH WOW")),
+    ("meme_wat", Art::Caption("WAT")),
+    ("meme_ermahgerd", Art::Caption("ERMAHGERD")),
+    ("meme_stonks", Art::Caption("STONKS")),
+    ("meme_not_stonks", Art::Caption("NOT STONKS")),
+    ("meme_plot_twist", Art::Caption("PLOT TWIST")),
+    ("meme_big_if_true", Art::Caption("BIG IF TRUE")),
+    ("meme_epic_fail", Art::Caption("EPIC FAIL")),
+    ("meme_hello_there", Art::Caption("HELLO THERE")),
+    ("meme_do_a_barrel_roll", Art::Caption("DO A\nBARREL ROLL")),
+    ("meme_67", Art::Caption("67")),
+    ("meme_chicken_jockey", Art::Caption("CHICKEN\nJOCKEY")),
+    ("meme_plus_1000_aura", Art::Caption("+1000 AURA")),
+    ("meme_minus_1000_aura", Art::Caption("-1000 AURA")),
+    ("meme_but_you_cant_prove_it", Art::Caption("BUT YOU CAN'T\nPROVE IT")),
+    ("meme_skill_issue", Art::Caption("SKILL ISSUE")),
+    ("meme_let_him_cook", Art::Caption("LET HIM COOK")),
+    ("meme_emotional_damage", Art::Caption("EMOTIONAL\nDAMAGE")),
+    ("meme_touch_grass", Art::Caption("TOUCH GRASS")),
     ("pointer_arrow", Art::Pointer(PointerShape::Arrow)),
     ("pointer_click", Art::Pointer(PointerShape::Click)),
     ("pointer_hand", Art::Pointer(PointerShape::Hand)),
@@ -141,6 +192,7 @@ pub(crate) fn art_of(name: &str) -> Option<Art> {
 pub(crate) fn sticker_title(name: &str) -> String {
     match art_of(name) {
         Some(Art::Stamp(text, _)) => format!("{text} stamp"),
+        Some(Art::Caption(text)) => text.replace('\n', " "),
         Some(Art::Pointer(p)) => p.title().into(),
         _ => {
             let words = name.replace('_', " ");
@@ -156,7 +208,7 @@ pub(crate) fn sticker_title(name: &str) -> String {
 /// Sticker `name`'s width over its height.
 pub(crate) fn sticker_aspect(name: &str) -> f32 {
     match art_of(name) {
-        Some(Art::Stamp(text, _)) => stamp_box(text).map_or(1.0, |b| b.w / b.h),
+        Some(art @ (Art::Stamp(..) | Art::Caption(_))) => art.text_box().map_or(1.0, |b| b.w / b.h),
         Some(Art::Pointer(p)) => p.view().width() / p.view().height(),
         _ => 1.0,
     }
@@ -179,7 +231,7 @@ pub(crate) fn clicked_size(name: &str, side: f32) -> (f32, f32) {
 }
 
 /// The sticker grid's tabs, by `Art::tab`.
-pub(crate) const STICKER_TABS: [&str; 3] = ["Emoji", "Stamps", "Pointers"];
+pub(crate) const STICKER_TABS: [&str; 4] = ["Emoji", "Stamps", "Memes", "Pointers"];
 
 impl Art {
     /// Its tab in the sticker grid, into `STICKER_TABS`.
@@ -187,14 +239,24 @@ impl Art {
         match self {
             Art::Emoji(_) => 0,
             Art::Stamp(..) => 1,
-            Art::Pointer(_) => 2,
+            Art::Caption(_) => 2,
+            Art::Pointer(_) => 3,
+        }
+    }
+
+    /// A stamp's or caption's text, laid out.
+    fn text_box(self) -> Option<TextBox> {
+        match self {
+            Art::Stamp(text, _) => text_box(text, STAMP_PAD),
+            Art::Caption(text) => text_box(text, CAPTION_PAD),
+            _ => None,
         }
     }
 
     /// How many grid cells it takes across.
     pub(crate) fn cells(self) -> usize {
         match self {
-            Art::Stamp(..) => 3,
+            Art::Stamp(..) | Art::Caption(_) => 3,
             _ => 1,
         }
     }
@@ -313,29 +375,44 @@ impl PointerShape {
     }
 }
 
-/// A stamp's layout at a font size of 100.
-struct StampBox {
+/// A stamp's or caption's text laid out at a font size of 100: its box,
+/// and each line's baseline origin in it.
+struct TextBox {
     font: Font,
     w: f32,
     h: f32,
-    text_w: f32,
-    cap: f32,
+    lines: Vec<(&'static str, Point)>,
 }
 
 /// Padding around a stamp's text, at a font size of 100.
 const STAMP_PAD: (f32, f32) = (32.0, 26.0);
+/// Padding around a caption, room for its outline.
+const CAPTION_PAD: (f32, f32) = (10.0, 10.0);
+/// The caption's outline, at a font size of 100.
+const CAPTION_OUTLINE: f32 = 10.0;
 
-fn stamp_box(text: &str) -> Option<StampBox> {
+/// `text`'s lines in Impact, centred, with `pad` round them.
+fn text_box(text: &'static str, pad: (f32, f32)) -> Option<TextBox> {
     let font = Font::from_typeface(LabelFont::Impact.typeface()?, 100.0);
-    let text_w = font.measure_str(text, None).0;
     let cap = font.metrics().1.cap_height;
-    Some(StampBox {
-        w: text_w + 2.0 * STAMP_PAD.0,
-        h: cap + 2.0 * STAMP_PAD.1,
-        font,
-        text_w,
-        cap,
-    })
+    let leading = cap * 0.35;
+    let widths: Vec<(&str, f32)> = text
+        .lines()
+        .map(|l| (l, font.measure_str(l, None).0))
+        .collect();
+    let widest = widths.iter().map(|(_, w)| *w).fold(0.0, f32::max);
+    let n = widths.len() as f32;
+    let w = widest + 2.0 * pad.0;
+    let h = n * cap + (n - 1.0).max(0.0) * leading + 2.0 * pad.1;
+    let lines = widths
+        .into_iter()
+        .enumerate()
+        .map(|(i, (l, lw))| {
+            let y = pad.1 + cap + i as f32 * (cap + leading);
+            (l, Point::new((w - lw) / 2.0, y))
+        })
+        .collect();
+    Some(TextBox { font, w, h, lines })
 }
 
 /// A noise seed of its own for each stamp's wear.
@@ -345,7 +422,7 @@ fn seed(text: &str) -> f32 {
 
 /// Draw stamp `text` in `colour` at a font size of 100, its box at the
 /// origin: worn ink in a double border.
-fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
+fn draw_stamp(canvas: &Canvas, b: &TextBox, text: &str, colour: u32) {
     let [r, g, bl] = [16, 8, 0].map(|s| ((colour >> s) & 0xff) as f32 / 255.0);
     let ink = Color4f::new(r, g, bl, 0.9);
     let bounds = Rect::from_wh(b.w, b.h);
@@ -365,8 +442,9 @@ fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
     );
     let mut fill = Paint::new(ink, None);
     fill.set_anti_alias(true);
-    let at = ((b.w - b.text_w) / 2.0, (b.h + b.cap) / 2.0);
-    canvas.draw_str(text, at, &b.font, &fill);
+    for (line, at) in &b.lines {
+        canvas.draw_str(line, *at, &b.font, &fill);
+    }
     // Wear: noise, cut to specks, takes ink out where it's high.
     if let Some(noise) = shaders::fractal_noise((0.09, 0.09), 3, seed(text), None) {
         let mut wear = Paint::default();
@@ -384,6 +462,23 @@ fn draw_stamp(canvas: &Canvas, b: &StampBox, text: &str, colour: u32) {
         canvas.draw_rect(bounds, &wear);
     }
     canvas.restore();
+}
+
+/// Draw a caption at a font size of 100, its box at the origin: white,
+/// outlined in black.
+fn draw_caption(canvas: &Canvas, b: &TextBox) {
+    let mut outline = Paint::new(Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+    outline.set_anti_alias(true);
+    outline.set_style(PaintStyle::Stroke);
+    outline.set_stroke_join(PaintJoin::Round);
+    outline.set_stroke_width(CAPTION_OUTLINE);
+    let mut white = Paint::new(Color4f::new(1.0, 1.0, 1.0, 1.0), None);
+    white.set_anti_alias(true);
+    for paint in [&outline, &white] {
+        for (line, at) in &b.lines {
+            canvas.draw_str(line, *at, &b.font, paint);
+        }
+    }
 }
 
 thread_local! {
@@ -423,7 +518,8 @@ pub fn draw_sticker(canvas: &Canvas, name: &'static str, rect: Rect, paint: &Pai
         draw(canvas);
         canvas.restore();
     };
-    match art_of(name) {
+    let art = art_of(name);
+    match art {
         Some(Art::Emoji(_)) => {
             if let Some(img) = sticker_image(name) {
                 canvas.draw_image_rect_with_sampling_options(
@@ -436,10 +532,15 @@ pub fn draw_sticker(canvas: &Canvas, name: &'static str, rect: Rect, paint: &Pai
             }
         }
         Some(Art::Stamp(text, colour)) => {
-            if let Some(b) = stamp_box(text) {
+            if let Some(b) = art.and_then(Art::text_box) {
                 fit(Rect::from_wh(b.w, b.h), &|c| {
                     draw_stamp(c, &b, text, colour)
                 });
+            }
+        }
+        Some(Art::Caption(_)) => {
+            if let Some(b) = art.and_then(Art::text_box) {
+                fit(Rect::from_wh(b.w, b.h), &|c| draw_caption(c, &b));
             }
         }
         Some(Art::Pointer(p)) => fit(p.view(), &|c| p.draw(c)),
@@ -458,11 +559,11 @@ pub struct Sticker {
 
 impl Sticker {
     /// Draw it; pictures and pointers with a soft shadow under them, so
-    /// they sit on the capture, and stamps flat, as ink.
+    /// they sit on the capture, and stamps and captions flat.
     pub fn draw(&self, canvas: &Canvas) {
         let rect = self.rect.sorted();
         let mut paint = Paint::default();
-        if !matches!(art_of(self.name), Some(Art::Stamp(..))) {
+        if !matches!(art_of(self.name), Some(Art::Stamp(..) | Art::Caption(_))) {
             let side = rect.width().min(rect.height());
             paint.set_image_filter(image_filters::drop_shadow(
                 (0.0, side * 0.03),
@@ -497,6 +598,12 @@ mod tests {
         assert!(STICKERS.len() <= usize::from(u8::MAX), "recents are u8s");
         assert_eq!(sticker_title("thumbs_up"), "Thumbs up");
         assert_eq!(sticker_title("stamp_ship_it"), "SHIP IT stamp");
+        assert_eq!(
+            sticker_title("meme_works_on_my_machine"),
+            "WORKS ON MY MACHINE"
+        );
+        // A long caption takes two lines, so it's no wider than a short one.
+        assert!(sticker_aspect("meme_works_on_my_machine") < sticker_aspect("meme_skill_issue"));
         assert_eq!(sticker_named("fire"), Some("fire"));
         assert_eq!(sticker_named("unicorn"), None);
         // Stamps are wide; the same area as a square.
